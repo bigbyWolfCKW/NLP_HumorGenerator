@@ -1,0 +1,79 @@
+{
+  "roberta": {
+    "backend": "hf",
+    "checkpoint": "checkpoints/roberta_qproduct_seed{seed}/best_model",
+    "default_seed": 42,
+    "input_mode": "pair",
+    "positive_label": 1,
+    "max_length": 128,
+    "backbone": "models/roberta-base"
+  },
+  "roberta-qonly": {
+    "backend": "hf",
+    "checkpoint": "checkpoints/roberta_qonly_seed{seed}/best_model",
+    "default_seed": 42,
+    "input_mode": "text",
+    "positive_label": 1,
+    "max_length": 128,
+    "backbone": "models/roberta-base"
+  },
+  "roberta-sub": {
+    "backend": "roberta-sub",
+    "checkpoint": "checkpoints/roberta_sub_seed{seed}/with_sub",
+    "backbone": "models/roberta-base",
+    "sub_checkpoint": null,
+    "default_seed": 42,
+    "positive_label": 1,
+    "max_length": 128
+  },
+  "deberta": {
+    "backend": "hf",
+    "checkpoint": "checkpoints/10_deberta_v3_base/qproduct_seed{seed}/best_model",
+    "input_mode": "pair",
+    "positive_label": 1,
+    "max_length": 128,
+    "default_seed": 42,
+    "backbone": "models/deberta-v3-base"
+  },
+  "lstm": {
+    "backend": "custom",
+    "checkpoint": "models/lstm_fasttext_question_only.pt",
+    "factory": null,
+    "positive_label": 1,
+    "max_length": 128
+  },
+  "cnn": {
+    "backend": "custom",
+    "checkpoint": "models/cnn_fasttext_question_only.pt",
+    "factory": null,
+    "positive_label": 1,
+    "max_length": 128
+  },
+  "deberta-qonly": {
+    "backend": "hf",
+    "checkpoint": "checkpoints/10_deberta_v3_base/qonly_seed{seed}/best_model",
+    "default_seed": 42,
+    "input_mode": "text",
+    "positive_label": 1,
+    "max_length": 128,
+    "backbone": "models/deberta-v3-base"
+  },
+  "roberta-large": {
+    "backend": "hf",
+    "checkpoint": "checkpoints/11_roberta_large/qproduct_seed{seed}/best_model",
+    "default_seed": 42,
+    "input_mode": "pair",
+    "positive_label": 1,
+    "max_length": 128,
+    "backbone": "models/roberta-large"
+  },
+  "roberta-large-qonly": {
+    "backend": "hf",
+    "checkpoint": "checkpoints/11_roberta_large/qonly_seed{seed}/best_model",
+    "default_seed": 42,
+    "input_mode": "text",
+    "positive_label": 1,
+    "max_length": 128,
+    "backbone": "models/roberta-large"
+  }
+}

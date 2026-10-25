@@ -1,0 +1,4 @@
+{
+  "root": "data/source",
+  "qa_train": "processed/unbiased/train.csv"
+}

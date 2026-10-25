@@ -1,0 +1,18 @@
+{
+  "qwen": {
+    "backend": "transformers",
+    "path": "models/llm/Qwen2.5-7B-Instruct",
+    "ollama_model": "qwen2.5:7b",
+    "load_in_4bit": true,
+    "max_new_tokens": 512,
+    "repo_id": "Qwen/Qwen2.5-7B-Instruct"
+  },
+  "deepseek": {
+    "backend": "transformers",
+    "path": "models/llm/DeepSeek-R1-Distill-Qwen-7B",
+    "ollama_model": "deepseek-r1:8b",
+    "load_in_4bit": true,
+    "max_new_tokens": 2048,
+    "repo_id": "deepseek-ai/DeepSeek-R1-Distill-Qwen-7B"
+  }
+}
