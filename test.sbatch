@@ -17,8 +17,12 @@ cd "${SLURM_SUBMIT_DIR:?Submit from the NLP_HumorGenerator directory}"
 MODE="demo"                 # demo | full | custom | generate | rank | review | prepare | train | test
 STEPS="generate rank"        # custom only; space-separated stages in pipeline order
 RUN_DIR=""                  # blank: new run; resume: results/demo-709136
-LLM="deepseek"
-REVIEW_LLM="qwen"
+LLM="deepseek"               # deepseek | qwen | qwen3b | qwen14b | deepseek14b | mistral
+REVIEW_BACKEND="api"          # api: remote reviewer, no download; transformers: local reviewer
+REVIEW_LLM="gpt-4o-mini"   # API model ID; for local review use qwen / qwen14b etc.
+REVIEW_API_BASE="https://hkust.azure-api.net/hkust-genai/v1"
+REVIEW_API_KEY_ENV="HKUST_API_KEY"  # environment variable NAME only; never put the key here
+REVIEW_API_MAX_TOKENS=1024
 DETECTOR="roberta"           # e.g. roberta | deberta | roberta-large
 DETECTOR_SEED=""             # blank: detector default; or 42, 43, 44
 NUM_PRODUCTS=""             # blank: demo=10, otherwise=50; explicit PRODUCTS uses all its entries
@@ -29,6 +33,7 @@ RANKED_FILE="ranked.xlsx"    # use ranked_deberta.xlsx to add another detector's
 ADAPTER=""                  # test only: blank uses RUN_DIR/lora/final_adapter
 TRAINING_CONFIG="configs/training.json"
 DRY_RUN="no"                # yes: print commands only; no model execution or file writes
+# API key: put HKUST_API_KEY=your_own_key in the private .env (copy .env.example once).
 # END OF SETTINGS. No command editing needed below.
 
 PROJECT_PYTHON="$PWD/.venv/bin/python"
@@ -39,6 +44,8 @@ fi
 export PYTHONUNBUFFERED=1
 
 ARGS=(--mode "$MODE" --llm "$LLM" --review-llm "$REVIEW_LLM"
+      --review-backend "$REVIEW_BACKEND" --review-api-base "$REVIEW_API_BASE"
+      --review-api-key-env "$REVIEW_API_KEY_ENV" --review-api-max-tokens "$REVIEW_API_MAX_TOKENS"
       --detector "$DETECTOR" --seed "$SEED" --ranked-file "$RANKED_FILE"
       --training-config "$TRAINING_CONFIG")
 if [[ "$MODE" == "custom" ]]; then

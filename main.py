@@ -6,10 +6,10 @@ from src.config import PROJECT, absolute, preflight, qa_dataset, select_detector
 from src.data import normalize, prepare_dataset, read_json, write_json
 
 
-def llm_arguments(p, adapter=False):
+def llm_arguments(p, adapter=False, api=False):
     p.add_argument("--llm", default="qwen", help="Name in configs/llms.json")
     p.add_argument("--model", help="Override model folder, cached HF repo ID, or Ollama model name")
-    p.add_argument("--backend", choices=["transformers", "ollama"],
+    p.add_argument("--backend", choices=["transformers", "ollama", "api"] if api else ["transformers", "ollama"],
                    help="Default configured backend: Hugging Face Transformers. Ollama is optional.")
     p.add_argument("--ollama-url", default="http://localhost:11434")
     p.add_argument("--seed", type=int, default=42)
@@ -46,7 +46,10 @@ def parser():
     rank.add_argument("--check", action="store_true", help="Check selected detector files without loading GPU weights")
     rank.add_argument("--seed", type=int, help="Optional checkpoint seed; uses model default if omitted")
     review = commands.add_parser("review", help="Use an LLM to select one of three sentences per product")
-    llm_arguments(review, adapter=True)
+    llm_arguments(review, adapter=True, api=True)
+    review.add_argument("--api-base", help="Chat API base URL, e.g. https://api.deepseek.com")
+    review.add_argument("--api-key-env", default="REVIEW_API_KEY", help="Environment variable name, never the key itself")
+    review.add_argument("--api-max-tokens", type=int, default=1024)
     review.add_argument("--input", default="results/ranked.xlsx")
     review.add_argument("--output", default="results/reviewed.xlsx")
     review.add_argument("--overwrite-selection", action="store_true")
@@ -134,7 +137,13 @@ def main(argv=None):
         output = new_output(args.output)
         source = absolute(args.input)
         rows = read_review(source)
-        model = LanguageModel(select_llm(args.llm, args.backend, args.model, args.adapter), args.ollama_url, args.seed)
+        if args.backend == "api":
+            if args.adapter:
+                p.error("Remote review cannot use a local LoRA adapter.")
+            from src.api_review import APIReviewer
+            model = APIReviewer(args.model or args.llm, args.api_base, args.api_key_env, args.api_max_tokens)
+        else:
+            model = LanguageModel(select_llm(args.llm, args.backend, args.model, args.adapter), args.ollama_url, args.seed)
         save_choices(source, output, choose_with_llm(rows, model, args.overwrite_selection))
         print(f"Selections: {output}")
     elif args.command == "prepare":

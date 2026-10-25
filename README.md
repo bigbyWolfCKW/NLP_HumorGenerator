@@ -44,7 +44,45 @@ source "$HOME/.local/bin/env"
 source setup.sh
 ```
 
-In `test.sbatch`, adjust the `#SBATCH` account/resources for your Superpod allocation. Teammates need collaborator access to clone this private repository.
+In `test.sbatch`, adjust the `#SBATCH` account/resources for your Superpod allocation. If the repository is private, teammates need collaborator access to clone it.
+
+## Choose and download LLMs once
+
+Set the model keywords in `test.sbatch`:
+
+```bash
+LLM="deepseek"                    # local 7B generator
+REVIEW_BACKEND="api"               # api or transformers
+REVIEW_LLM="gpt-4o-mini"           # default HKUST online reviewer
+REVIEW_API_BASE="https://hkust.azure-api.net/hkust-genai/v1"
+REVIEW_API_KEY_ENV="HKUST_API_KEY"  # variable NAME only, never the secret
+REVIEW_API_MAX_TOKENS=1024
+```
+
+| Keyword | Model |
+| --- | --- |
+| `deepseek` / `deepseek14b` | DeepSeek-R1-Distill-Qwen 7B / 14B |
+| `qwen3b` / `qwen` / `qwen14b` | Qwen2.5-Instruct 3B / 7B / 14B |
+| `mistral` | Mistral-7B-Instruct-v0.3 |
+
+After setup, download from the project root; **do this separately before submitting a GPU job**:
+
+```bash
+# Download selected LOCAL models only; API reviewer is skipped:
+uv run --locked python scripts/download_models.py --from-batch test.sbatch
+# Or explicitly choose any subset:
+uv run --locked python scripts/download_models.py --models qwen3b qwen mistral
+```
+
+`--list` shows choices; `--dry-run` previews downloads. Complete local models are skipped. Files go to `configs/llms.json` locations; jobs never download models. For local review set `REVIEW_BACKEND="transformers"` and choose a local keyword above. A local 14B model needs roughly 30GB disk space. Detector-only ranking needs no LLM; new local variants still need Superpod validation.
+
+**Each teammate uses their own key.** Once per clone:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+nano .env   # fill HKUST_API_KEY=your_own_key, then save
+```
 
 ## Run: edit test.sbatch, then submit
 

@@ -5,6 +5,8 @@ __pycache__/
 .uv-cache/
 .environment.json
 .env
+.env.*
+!.env.example
 *.log
 *.local.json
 results/*

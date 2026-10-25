@@ -18,6 +18,10 @@ def parser():
     p.add_argument("--run-dir", help="Existing run for partial stages; blank creates a new run")
     p.add_argument("--llm", default="deepseek")
     p.add_argument("--review-llm", default="qwen")
+    p.add_argument("--review-backend", choices=["transformers", "api"], default="transformers")
+    p.add_argument("--review-api-base")
+    p.add_argument("--review-api-key-env", default="REVIEW_API_KEY")
+    p.add_argument("--review-api-max-tokens", type=int, default=1024)
     p.add_argument("--detector", default="roberta")
     p.add_argument("--detector-seed", type=int)
     p.add_argument("--seed", type=int, default=42)
@@ -61,7 +65,7 @@ def plan(args):
     commands = {
         "generate": ["generate", *common, *source, "--per-product", "3", "--output", sentences],
         "rank": ["rank", *detector, "--input", sentences, "--output", ranked],
-        "review": ["review", "--llm", args.review_llm, "--backend", "transformers", "--seed", str(args.seed),
+        "review": ["review", "--llm", args.review_llm, "--backend", args.review_backend, "--seed", str(args.seed),
                    "--input", ranked, "--output", reviewed],
         "prepare": ["prepare", "--input", reviewed, "--output", data, "--seed", str(args.seed)],
         "train": ["train", *common, "--data", data, "--config", str(run / "training.json"),
@@ -69,6 +73,11 @@ def plan(args):
         "test": ["test", *common, "--adapter", adapter, "--data", str(run / "data/test.jsonl"),
                  "--output", str(run / "test.xlsx")],
     }
+    if args.review_backend == "api":
+        if "review" in steps and not args.review_api_base:
+            raise ValueError("Set REVIEW_API_BASE when using API review.")
+        commands["review"] += ["--api-base", args.review_api_base or "", "--api-key-env", args.review_api_key_env,
+                               "--api-max-tokens", str(args.review_api_max_tokens)]
     return run, [(step, commands[step]) for step in steps]
 
 
@@ -79,6 +88,10 @@ def run(args, runner=None):
         for step, command in commands:
             print(subprocess.list2cmdline([sys.executable, str(PROJECT / "main.py"), *command]))
         return
+    if args.review_backend == "api" and "review" in dict(commands):
+        from src.api_review import APIReviewer
+        # Validate credentials/URL before any generation; this makes no network request.
+        APIReviewer(args.review_llm, args.review_api_base, args.review_api_key_env, args.review_api_max_tokens)
     # Existing runs are used only when explicitly selected. Stage outputs never overwrite.
     if not args.run_dir and folder.exists():
         raise FileExistsError(f"Run folder exists: {folder}")
