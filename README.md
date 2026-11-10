@@ -21,8 +21,7 @@ required reward checkpoints available. Use the train and test CSVs and
 account in `formal.sbatch` against your allocation.
 
 See the [formal workflow guide](docs/formal-workflow.md) for input formats,
-checkpoint requirements, and direct Python commands. Use the defaults
-below when running through `formal.sbatch`.
+checkpoint requirements, and the full submission order.
 
 ## Run one stage at a time
 
@@ -46,10 +45,8 @@ below when running through `formal.sbatch`.
 | Imported reward training and validation data | `data/formal_v2/reward/${MEMBER_ID}/reward_data_review/` |
 | Adapted reward model | `models/detector/preferences/${MEMBER_ID}_product_humor_review/best_model/` |
 
-If you use the direct commands in the guide for any reward stage, match
-their paths to the table above or set `REWARD_DATA` and `REWARD_MODEL`
-consistently across runs. `REWARD_MODEL` points to the parent directory
-that contains `best_model/`.
+Set any path overrides consistently across dependent jobs.
+`REWARD_MODEL` points to the parent directory containing `best_model/`.
 
 ## Six held-out model variants
 
@@ -66,10 +63,11 @@ every variant.
 | `grpo_adapted` | Qwen + SFT + GRPO with adapted Arena | `adapted` |
 
 Evaluation outputs are saved under
-`results/formal_v2/evaluation/${MEMBER_ID}/`. After generating the ads,
-use the [held-out review prompt](docs/formal-review-prompts.md#final-held-out-evaluation)
-with the exported blind pairs. Keep final held-out judgments separate
-from training data.
+`results/formal_v2/evaluation/${MEMBER_ID}/`. The
+[held-out review steps](docs/formal-workflow.md#7-review-the-held-out-ads)
+cover both the six-model scorecard and the original Arena versus adapted
+Arena A/B review. Keep final held-out judgments separate from training
+data.
 
 ## Remarks
 
