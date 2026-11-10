@@ -2,7 +2,7 @@
 
 ProductPunch trains and evaluates Qwen models that write humorous English
 ads grounded in product facts. Each team member trains on their assigned
-products and compares six model variants on the same held-out products.
+products and evaluates six model variants on the same held-out products.
 
 ## Quick start on SuperPOD
 
@@ -20,8 +20,9 @@ required reward checkpoints available. Use the train and test CSVs and
 `assignment_core.json` from the same team assignment. Check the Slurm
 account in `formal.sbatch` against your allocation.
 
-See the [full workflow](docs/formal-workflow.md) for input paths,
-checkpoint paths, and direct Python commands.
+See the [formal workflow guide](docs/formal-workflow.md) for input formats,
+checkpoint requirements, and direct Python commands. Use the defaults
+below when running through `formal.sbatch`.
 
 ## Run one stage at a time
 
@@ -33,18 +34,27 @@ checkpoint paths, and direct Python commands.
 | Import reward labels | `bash formal.sbatch prepare-reward-data` | Save the AI's `reviewed_pairs.jsonl` beside the blind pairs. The importer uses the matching private mapping from that directory. |
 | Train SFT | `sbatch formal.sbatch train-sft` | Run when the reviewed SFT JSONL is ready. |
 | Train the adapted reward | `sbatch formal.sbatch train-reward` | Run when the reward train and validation JSONLs are ready. This can run in parallel with SFT. |
-| Train GRPO | `sbatch formal.sbatch train-grpo <reward>` | Run once per reward with the same SFT adapter. The `adapted` arm also needs the adapted reward checkpoint. |
+| Train GRPO | `sbatch formal.sbatch train-grpo <reward>` | Run once per reward with the same SFT adapter. The `adapted` run also needs the adapted reward checkpoint. |
 | Generate held-out ads | `sbatch formal.sbatch evaluate <variant>` | Run each variant after its required model or adapter is ready. |
-| Export final blind pairs | `bash formal.sbatch prepare-final-pairs` | Run after both selected evaluation runs finish. By default this compares original Arena with adapted Arena. |
+| Export final blind pairs | `bash formal.sbatch prepare-final-pairs` | Run after both selected evaluation runs finish. The default comparison is original Arena versus adapted Arena. |
 
-Submit the next stage once its inputs are ready. At an AI review
-handoff, save the returned file in the specified directory before
-running the import stage.
+### Default reward paths
 
-## Six held-out comparisons
+| Artifact | Path used by `formal.sbatch` |
+| --- | --- |
+| Blind pairs and returned reviews | `data/formal_v2/reward/${MEMBER_ID}/humor_pairwise/` |
+| Imported reward training and validation data | `data/formal_v2/reward/${MEMBER_ID}/reward_data_review/` |
+| Adapted reward model | `models/detector/preferences/${MEMBER_ID}_product_humor_review/best_model/` |
 
-Use the same test products, prompt, seed, and number of candidates
-for every variant.
+If you use the direct commands in the guide for any reward stage, match
+their paths to the table above or set `REWARD_DATA` and `REWARD_MODEL`
+consistently across runs. `REWARD_MODEL` points to the parent directory
+that contains `best_model/`.
+
+## Six held-out model variants
+
+Use the same test products, prompt, seed, and number of candidates for
+every variant.
 
 | Evaluation variant | Model | GRPO reward argument |
 | --- | --- | --- |
@@ -55,26 +65,27 @@ for every variant.
 | `grpo_mechanics` | Qwen + SFT + GRPO with Humor Mechanics | `mechanics` |
 | `grpo_adapted` | Qwen + SFT + GRPO with adapted Arena | `adapted` |
 
-Use the [review prompts](docs/formal-review-prompts.md) for SFT selection,
-reward labels, and final held-out evaluation. The workflow guide also
-describes the optional six-model scorecard. Keep final held-out
-judgments separate from training data.
+Evaluation outputs are saved under
+`results/formal_v2/evaluation/${MEMBER_ID}/`. After generating the ads,
+use the [held-out review prompt](docs/formal-review-prompts.md#final-held-out-evaluation)
+with the exported blind pairs. Keep final held-out judgments separate
+from training data.
 
 ## Remarks
 
 - **Default AI review.** Manually give the external AI the review input
-  and the matching prompt, then save its response in the expected
-  location. If you use an AI web app on your computer, download the
-  review input from SuperPOD and upload the returned file afterward.
-  For blind reviews, share only the public review input and the prompt.
-  Keep the private mapping with the run owner.
-- **Optional automation.** The earlier pipeline's API reviewer is
-  configured in `test.sbatch` and can serve as a starting point.
-  Automating a formal review stage requires the corresponding output
-  format and the original candidate or pair IDs. Store any API key in
-  a private environment variable or `.env`.
-- **GitHub handoff.** Share the scripts, prompts, and documentation in
-  Git. Transfer assigned datasets and required checkpoints separately.
+  and the [matching prompt](docs/formal-review-prompts.md). Save the
+  response at the path expected by the next stage. If you use an AI web
+  app on your computer, download the input from SuperPOD and upload the
+  response afterward. For blind reviews, share only the public review
+  input and prompt. Keep the private mapping with the run owner.
+- **Optional automation.** The earlier pipeline's API reviewer in
+  `test.sbatch` can serve as a starting point. Automation for a formal
+  review stage must return the required file format and preserve the
+  original candidate or pair IDs. Store credentials in a private
+  environment variable or `.env`.
+- **GitHub handoff.** Share scripts, prompts, and documentation in Git.
+  Transfer assigned datasets and required checkpoints separately.
 
 See the [archived README](README.legacy.md) for the earlier
 `test.sbatch` workflow.
