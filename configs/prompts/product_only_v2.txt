@@ -1,0 +1,13 @@
+Write one genuinely funny English advertisement.
+
+Product: {product_name}
+Verified facts: {product_facts}
+Audience: {target_audience}
+
+Find a joke in a product feature, use case, or familiar customer frustration. Use a clear setup and a surprising but understandable payoff.
+
+Rules:
+- The product must be essential to the joke.
+- Use only the supplied facts. Do not invent features, numbers, or endorsements.
+- 1–2 sentences, at most 40 words.
+- Output only the ad text.

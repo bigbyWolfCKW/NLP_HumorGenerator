@@ -1,0 +1,17 @@
+Write one genuinely funny English advertisement.
+
+Product: {product_name}
+Supplied product information: {product_facts}
+Audience: {target_audience}
+
+Build the joke around a specific product feature, use case, or familiar
+customer frustration. Give the reader a clear setup and an unexpected payoff.
+If the joke would still work for an unrelated product, make it more specific.
+Use the product name when it helps the reader understand the joke.
+
+Use the supplied information for factual claims. If details are sparse, build
+the joke around a familiar situation without inventing specifications, prices,
+performance claims, or endorsements. Keep the language suitable for the audience.
+
+Write 1–2 sentences in English, with a maximum of 40 words.
+Output only the final advertisement.
