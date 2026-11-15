@@ -3,10 +3,18 @@ import sys
 
 
 def parser():
-    p = argparse.ArgumentParser(description="Detector scoring, training and QA evaluation")
+    p = argparse.ArgumentParser(description="Detector dataset inspection, scoring, training and QA evaluation")
     commands = p.add_subparsers(dest="command", required=True)
     commands.add_parser("list", help="List configured detectors")
     commands.add_parser("rank", add_help=False, help="Forward existing main.py rank options")
+    eda = commands.add_parser("eda", help="Inspect QProduct CSV splits before training")
+    eda.add_argument("--train-csv")
+    eda.add_argument("--validation-csv")
+    eda.add_argument("--include-test", action="store_true", help="Also inspect the test CSV")
+    eda.add_argument("--test-csv", help="Inspect this CSV as the test split")
+    eda.add_argument("--detector", action="append", default=[],
+                     help="Also check this paired HF backbone and measure its token lengths; repeat as needed")
+    eda.add_argument("--max-length", type=int, default=128)
     train = commands.add_parser("train", help="Train a standard HF binary detector on QA train/validation")
     train.add_argument("--detector", default="roberta")
     train.add_argument("--train-csv")
@@ -39,6 +47,9 @@ def main(argv=None):
         from src.data import read_json
         for name, config in read_json(PROJECT / "configs/detectors.json").items():
             print(f"{name:24} {config['backend']:14} {config['checkpoint']}")
+    elif args.command == "eda":
+        from .eda import inspect_splits
+        inspect_splits(args)
     elif args.command == "train":
         from .training import train_detector
         train_detector(args)

@@ -1,6 +1,8 @@
 # Detector
 
-Detector code is separate from LLM generation and LoRA training, but uses the same uv environment and model/data folders.
+## Detector code
+
+The detector code is separate from LLM generation and LoRA training. It trains the best-performing binary humor/non-humor detector, and it shares the same `uv` environment and model/data folders as the rest of the project.
 
 ```text
 detector/
@@ -9,70 +11,92 @@ detector/
 ├── models/              # architecture code, not model weights
 │   └── roberta_sub.py
 ├── data.py               # labelled QA CSV input and binary metrics
+├── eda.py                # QProduct split and tokenizer checks
 ├── training.py           # standard HF classifier training
 ├── evaluation.py         # labelled QA evaluation
 └── experiments/          # named comparison experiments
 ```
 
-Slurm defaults to account `mscbdt2024` and partition `normal`. Edit those directives in `scripts/detector.sbatch` or override them with `sbatch --account=YOUR_SLURM_ACCOUNT ...` when needed.
+## Prepare and inspect the QProduct inputs
 
-Weights remain in `models/detector/`. CSV datasets remain in `data/source/`. Existing `main.py rank` and demo commands continue to work through compatibility imports under `src/`.
-
-## Use existing detectors
+Run from the repository root on SuperPOD:
 
 ```bash
-uv run --locked python -m detector list
-uv run --locked python -m detector rank --detector roberta-large --check
-
-sbatch scripts/detector.sbatch rank \
-  --input results/demo-709136/sentences.json --detector roberta-large \
-  --output results/ranked_roberta_large.xlsx
+source setup.sh
+module load slurm
 ```
 
-Inference support is unchanged by this folder separation: standard binary HF models and the inspected RoBERTa+64-dimensional SUB architecture are supported. The later 65-dimensional INC+SUB fusion checkpoints require an additional backend even when their INC branch is disabled. LSTM/CNN entries still require their original humor-classifier loaders.
+Obtain each pretrained backbone and tokenizer and put them at the
+corresponding path. Record the source revision used for each run.
 
-## Train a new standard detector
+| Backbone source | Directory |
+| --- | --- |
+| [RoBERTa-base](https://huggingface.co/FacebookAI/roberta-base) | `models/detector/models/roberta-base/` |
+| [DeBERTa-v3-base](https://huggingface.co/microsoft/deberta-v3-base) | `models/detector/models/deberta-v3-base/` |
+| [RoBERTa-large](https://huggingface.co/FacebookAI/roberta-large) | `models/detector/models/roberta-large/` |
 
-The train command supports the HF entries for RoBERTa-base, RoBERTa-large and DeBERTa. It reads the corresponding `backbone` setting in `configs/detectors.json`. Supply the complete base model and tokenizer in `models/detector/models/`, plus both QA splits:
-
-```text
-data/source/processed/unbiased/train.csv
-data/source/processed/unbiased/validation.csv
-```
-
-Each CSV requires `question`, `product_group`, `label` (0/1), and `product_description` for paired input. Train and validation products must be disjoint. Test data is not loaded by the training command.
+Place the shared QProduct splits in `data/source/processed/unbiased/` as
+`train.csv` and `validation.csv`.
+Each CSV needs `question`, `product_description`, `product_group`, and
+`label` (0 or 1). Each model receives the question and description as paired
+input.
 
 ```bash
-# Example NEW seed/output; this command performs actual detector training.
-sbatch scripts/detector.sbatch train \
-  --detector roberta \
-  --output models/detector/checkpoints/roberta_qproduct_seed45 \
-  --seed 45
+.venv/bin/python -m detector eda \
+  --detector roberta --detector deberta --detector roberta-large --max-length 128
 ```
 
-Defaults follow the standard classifier experiments: three epochs, batch size 16, maximum length 128, LR 2e-5, AdamW weight decay .01, warmup .1, gradient clipping 1, and best validation macro-F1 selection. Override them through the train CLI. `--seed` is independent of the detector name. Explicit `--train-csv` and `--validation-csv` overrides are available. Existing output directories are rejected, including partially completed runs.
+Review the label counts and product groups. A product appearing in both
+splits causes the check to fail. The tokenizer checks verify the local
+weight files, load each tokenizer, and show how many question–description
+pairs exceed the training limit of 128 tokens. Run
+`.venv/bin/python -m detector eda` to inspect just the CSVs while preparing
+the backbones.
 
-Outputs: `config.json`, `history.json`, `best_validation.json`, and `best_model/` containing weights/config/tokenizer. Register a custom output path as a new detector entry; standard seed paths such as the example are already covered by the registry template. Keep registry `max_length` and `input_mode` consistent with training settings.
+## Compare the QProduct Transformer detectors
+
+Use the same train and validation splits and seed `42` for all three runs.
+Each output directory must be new. If your allocation requires an explicit
+Slurm account, add `--account=YOUR_SLURM_ACCOUNT` before the script name.
 
 ```bash
-uv run --locked python -m detector rank --detector roberta --seed 45 --check
+qproduct_args=(
+  --train-csv data/source/processed/unbiased/train.csv
+  --validation-csv data/source/processed/unbiased/validation.csv
+  --seed 42 --epochs 3 --batch-size 16 --max-length 128 --learning-rate 2e-5
+)
+
+sbatch scripts/detector.sbatch train --detector roberta "${qproduct_args[@]}" \
+  --output models/detector/checkpoints/roberta_qproduct_seed42
+
+sbatch scripts/detector.sbatch train --detector deberta "${qproduct_args[@]}" \
+  --output models/detector/checkpoints/10_deberta_v3_base/qproduct_seed42
+
+sbatch scripts/detector.sbatch train --detector roberta-large "${qproduct_args[@]}" \
+  --output models/detector/checkpoints/11_roberta_large/qproduct_seed42
 ```
 
-## Evaluate a labelled QA split
+Each run saves its highest-validation-macro-F1 epoch under `best_model/`,
+including `model.safetensors`, the model config, and the tokenizer. Compare
+`validation.macro_f1` in the three `best_validation.json` files to rank the
+models. Baseline GRPO and the
+[Original Arena training recipe](../README.md#train-the-detector-and-humor-preference-model)
+use the RoBERTa-large output path above. To use a different detector in
+those stages, configure its checkpoint path explicitly.
 
-Supply `data/source/processed/unbiased/test.csv` or select an explicit labelled CSV. The evaluate command performs inference only:
+## Check and evaluate the trained detector
+
+Check that the trained RoBERTa-large checkpoint can be found, then evaluate
+it with a held-out CSV at `data/source/processed/unbiased/test.csv` or use
+`--csv` to pass its location:
 
 ```bash
+.venv/bin/python -m detector rank --detector roberta-large --seed 42 --check
 sbatch scripts/detector.sbatch evaluate \
-  --detector roberta --seed 45 --output results/detector/roberta_seed45_test
+  --detector roberta-large --seed 42 --output results/detector/roberta_large_seed42_test
 ```
 
 It writes `metrics.json` and `predictions.csv`, with accuracy, macro-F1, the confusion matrix, input hash and resolved configuration. Select models using validation; use the held-out test for reporting rather than repeated tuning. Candidate ranking uses unlabelled generated sentences and is a separate command.
 
-## Comparison experiment code
-
-`experiments/` retains descriptively named baseline and ablation sources, including random/fastText embeddings, product-QA incongruity, large-model learning-rate comparisons and biased/cross-dataset experiments. Lower-scoring variants remain useful comparisons. Sibling imports use the new names; checkpoint paths and experiment identifiers are unchanged. See its README and `filenames.json` for the mapping and execution boundaries.
-
-The common trainer replaces four duplicate standard HF trainers. Two one-off diagnostic scripts are omitted. No historical source ZIP is kept in the new project. To remove unchanged old filenames after applying the update, run `.venv/bin/python scripts/clean_experiments.py`. Edited sources are retained; models, datasets and results are untouched. Research-path/cache/dependency adaptation remains separate from the supported portable standard CLI.
-
-The new module's local tests cover CSV validation, metrics, compatibility imports and evaluation wiring. A tiny CPU RoBERTa classifier completed a training epoch and exported loadable weights/tokenizer locally. Real model training and GPU behaviour still require Superpod validation. Existing completed LLM/LoRA demo results are unaffected.
+Model selection
+In our experiments, RoBERTa-large achieved the best performance. Since the three models produced very similar scores, we selected the highest-performing model, RoBERTa-large, to ensure the reproducibility of our results.

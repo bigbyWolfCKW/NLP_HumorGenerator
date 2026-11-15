@@ -21,7 +21,7 @@ VARIANT="${2:-arena}"
 SEED=42
 RESUME="${RESUME:-no}"
 
-TRAIN_PRODUCTS=100
+TRAIN_PRODUCTS="${TRAIN_PRODUCTS:-100}"
 TRAIN_CANDIDATES=4
 TEST_PRODUCTS=50
 TEST_CANDIDATES=4
@@ -67,7 +67,7 @@ if [[ "$RESUME" == "yes" ]]; then
     resume_args=(--resume)
 fi
 
-train_csv="data/formal_v1/${MEMBER_ID}_train.csv"
+train_csv="${TRAIN_CSV:-data/formal_v1/${MEMBER_ID}_train.csv}"
 test_csv="data/formal_v1/${MEMBER_ID}_test.csv"
 sft_file="$SFT_DATA/reviewed_product_ads_train.jsonl"
 
