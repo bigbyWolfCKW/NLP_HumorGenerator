@@ -6,7 +6,7 @@ import json
 import random
 import shutil
 import unicodedata
-from collections import defaultdict
+from collections import Counter, defaultdict
 from pathlib import Path
 from tempfile import TemporaryDirectory
 from urllib.request import urlopen
@@ -34,20 +34,29 @@ def download(raw):
 
 def read_groups(raw):
     groups = defaultdict(list)
+    skipped = {}
     for name, label in FILES.items():
+        missing_text = Counter()
         with (raw / name).open(encoding="utf-8-sig", newline="") as stream:
             reader = csv.DictReader(stream)
             if not set(FIELDS[:-1]).issubset(reader.fieldnames or []):
                 raise ValueError(f"Unexpected Amazon PQA columns in {name}: {reader.fieldnames}")
             for row in reader:
-                values = {key: (row[key] or "").strip() for key in FIELDS[:-1]}
-                if not values["question"] or not values["product_description"] or values["label"] != label:
+                if None in row or any(row[field] is None for field in FIELDS[:-1]):
                     raise ValueError(f"Invalid record in {name} at line {reader.line_num}")
+                values = {field: row[field].strip() for field in FIELDS[:-1]}
+                if values["label"] != label:
+                    raise ValueError(f"Unexpected label in {name} at line {reader.line_num}")
+                empty = [field for field in ("question", "product_description") if not values[field]]
+                if empty:
+                    missing_text[" and ".join(empty)] += 1
+                    continue
                 group = " ".join(
                     unicodedata.normalize("NFKC", values["product_description"]).casefold().split()
                 )
                 groups[group].append({**values, "product_group": group})
-    return groups
+        skipped[name] = dict(missing_text)
+    return groups, skipped
 
 
 def main():
@@ -62,7 +71,7 @@ def main():
         raise FileExistsError(f"Split directory already exists: {output}")
     if not args.offline:
         download(args.raw_dir)
-    groups = read_groups(args.raw_dir)
+    groups, skipped = read_groups(args.raw_dir)
     keys = sorted(groups)
     random.Random(args.seed).shuffle(keys)
     train_end = len(keys) * 60 // 100
@@ -79,6 +88,7 @@ def main():
         "group_split_percentages": [60, 20, 20],
         "group_key": "NFKC casefolded, whitespace-normalized product description",
         "sources": [f"{BUCKET}/{name}" for name in FILES],
+        "skipped_missing_text_rows": skipped,
         "splits": {},
     }
     output.parent.mkdir(parents=True, exist_ok=True)
