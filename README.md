@@ -19,7 +19,8 @@ Check the Slurm account in `formal.sbatch` against your allocation.
 
 ### Prepare data in one Slurm job
 
-Submit from the repository root after setup.
+Submit from the repository root after setup. The launcher requests one GPU
+to meet the SuperPOD partition's Slurm requirements.
 
 | Use case | Command |
 | --- | --- |

@@ -23,9 +23,10 @@ allocation. `setup.sh` creates the project's `.venv`.
 
 ### Prepare a new assignment
 
-Submit one CPU job to download Amazon PQA, create a deterministic 60/20/20
-split by normalized product description, run detector EDA, and build the
-four member assignments from the processed training split.
+Submit one Slurm job to download Amazon PQA, create a deterministic
+60/20/20 split by normalized product description, run detector EDA, and
+build the four member assignments. The launcher requests one GPU to meet
+the SuperPOD partition's Slurm requirements.
 [Amazon PQA dataset and license](https://registry.opendata.aws/humor-detection/)
 
 ```bash

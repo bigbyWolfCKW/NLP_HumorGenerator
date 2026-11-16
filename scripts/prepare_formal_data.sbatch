@@ -2,6 +2,7 @@
 #SBATCH --job-name=formal-data
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
+#SBATCH --gres=gpu:1
 #SBATCH --partition=normal
 #SBATCH --account=mscbdt2024
 #SBATCH --cpus-per-task=1
