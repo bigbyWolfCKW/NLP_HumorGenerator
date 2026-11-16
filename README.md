@@ -14,6 +14,8 @@ module load slurm
 export MEMBER_ID=member_1
 ```
 
+`setup.sh` installs uv automatically if it is missing.
+
 Set `MEMBER_ID` to your assigned member ID.
 Check the Slurm account in `formal.sbatch` against your allocation.
 

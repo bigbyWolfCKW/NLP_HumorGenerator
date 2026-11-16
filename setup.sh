@@ -13,14 +13,6 @@ _humor_setup() {
         echo "Usage: source setup.sh [--migrate-conda]" >&2
         return 1
     fi
-    uv_bin="$(command -v uv || true)"
-    if [[ -z "$uv_bin" && -x "$HOME/.local/bin/uv" ]]; then
-        uv_bin="$HOME/.local/bin/uv"
-    fi
-    if [[ -z "$uv_bin" ]]; then
-        echo "Install uv first: curl -LsSf https://astral.sh/uv/install.sh | sh" >&2
-        return 1
-    fi
     if [[ ! -f "$project_dir/uv.lock" ]]; then
         echo "Missing uv.lock. Upload the complete uv update before setup." >&2
         return 1
@@ -33,6 +25,23 @@ _humor_setup() {
     elif [[ -e "$env_dir" && ! -f "$env_dir/pyvenv.cfg" ]]; then
         echo "Unrecognized .venv directory; preserved without modification." >&2
         return 1
+    fi
+    uv_bin="$(command -v uv || true)"
+    if [[ -z "$uv_bin" ]]; then
+        uv_bin="$HOME/.local/bin/uv"
+        if [[ ! -x "$uv_bin" ]]; then
+            echo "Installing uv..."
+            (
+                set -o pipefail
+                curl -LsSf https://astral.sh/uv/install.sh |
+                    UV_INSTALL_DIR="$HOME/.local/bin" UV_NO_MODIFY_PATH=1 sh
+            ) || return 1
+        fi
+        if [[ ! -x "$uv_bin" ]]; then
+            printf 'Could not find uv at %s after installation.\n' "$uv_bin" >&2
+            return 1
+        fi
+        export PATH="$HOME/.local/bin:$PATH"
     fi
     "$uv_bin" python install 3.11 || return 1
     if [[ -f "$env_dir/conda-meta/history" ]]; then

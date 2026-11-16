@@ -20,7 +20,7 @@ or use `all` for a pooled experiment.
 Set it again in each new terminal. The launcher defaults to `member_1`
 when the variable is unset. Check that the Slurm account in both
 `scripts/prepare_formal_data.sbatch` and `formal.sbatch` matches your
-allocation. `setup.sh` creates the project's `.venv`.
+allocation. `setup.sh` installs uv if needed and creates the project's `.venv`.
 
 ### Prepare a new assignment
 
