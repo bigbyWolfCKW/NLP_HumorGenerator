@@ -1,4 +1,4 @@
-"""Train a fresh Qwen LoRA on one or more supervised ad datasets."""
+"""Train a fresh LoRA on one or more supervised ad datasets."""
 
 import argparse
 import hashlib
@@ -12,6 +12,8 @@ from datasets import Dataset
 from peft import LoraConfig, get_peft_model, prepare_model_for_kbit_training
 from transformers import set_seed
 from trl import SFTConfig, SFTTrainer
+
+from formal_models import compatible_resume, model_registry
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
@@ -79,7 +81,9 @@ def load_examples(paths):
 
 
 def main():
+    models = model_registry()
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--llm", choices=models, default="qwen")
     parser.add_argument("--train-file", type=Path, action="append", required=True)
     parser.add_argument("--output", type=Path, required=True)
     parser.add_argument("--resume", action="store_true")
@@ -97,7 +101,7 @@ def main():
     if not torch.cuda.is_available():
         raise RuntimeError("Submit through the GPU Slurm script.")
 
-    base_model = PROJECT / read_json(PROJECT / "configs/llms.json")["qwen"]["path"]
+    base_model = PROJECT / models[args.llm]["path"]
     lora_config = {
         "task_type": "CAUSAL_LM",
         "bias": "none",
@@ -133,7 +137,7 @@ def main():
 
     resume = None
     if args.resume:
-        if read_json(output / "run.json") != settings:
+        if not compatible_resume(read_json(output / "run.json"), settings, args.llm, __file__):
             raise ValueError("Resume inputs or settings changed.")
         if (output / "completed.json").exists():
             print("SFT already completed:", output, flush=True)

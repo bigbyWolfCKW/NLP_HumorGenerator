@@ -15,6 +15,8 @@ from transformers import (
     set_seed,
 )
 
+from formal_models import compatible_resume, model_registry
+
 PROJECT = Path(__file__).resolve().parents[1]
 
 
@@ -53,6 +55,7 @@ def format_flags(text, tokens, eos_id):
 
 
 def main():
+    models = model_registry()
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
         "--input",
@@ -61,10 +64,8 @@ def main():
     parser.add_argument("--owner", default="member_1")
     parser.add_argument("--candidates", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
-    parser.add_argument(
-        "--output",
-        default="results/formal_v1/member_1_qwen_first100_v1",
-    )
+    parser.add_argument("--llm", choices=models, default="qwen")
+    parser.add_argument("--output")
     parser.add_argument("--resume", action="store_true")
     parser.add_argument(
     "--prompt-file", default="configs/prompts/humor_ad_v1.txt"
@@ -78,7 +79,7 @@ def main():
         raise RuntimeError("Submit through the GPU Slurm script")
 
     source = PROJECT / args.input
-    output = PROJECT / args.output
+    output = PROJECT / (args.output or f"results/formal_v1/member_1_{args.llm}_first100_v1")
     prompt_path = PROJECT / args.prompt_file
     core_path = PROJECT / "data/formal_v1/assignment_core.json"
     core = read_json(core_path)
@@ -115,7 +116,7 @@ def main():
         if not 1 <= args.num_products <= len(products):
             parser.error(f"--num-products must be between 1 and {len(products)}")
         products = products[:args.num_products]
-    llm_config = read_json(PROJECT / "configs/llms.json")["qwen"]
+    llm_config = models[args.llm]
     model_path = PROJECT / llm_config["path"]
     template = prompt_path.read_text(encoding="utf-8")
 
@@ -144,7 +145,7 @@ def main():
     }
 
     if args.resume:
-        if read_json(output / "run.json") != settings:
+        if not compatible_resume(read_json(output / "run.json"), settings, args.llm, __file__):
             raise ValueError("Resume inputs or settings changed")
         if (output / "completed.json").exists():
             print("Generation already complete:", output)
@@ -262,7 +263,7 @@ def main():
             record = {
                 **product,
                 "candidate_id": candidate_id,
-                "generator": "qwen_base",
+                "generator": f"{args.llm}_base",
                 "seed": seed,
                 "prompt": prompt,
                 "ad_text": text,

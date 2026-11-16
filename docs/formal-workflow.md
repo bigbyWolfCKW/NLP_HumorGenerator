@@ -74,12 +74,41 @@ eligible products, set `TRAIN_PRODUCTS` and `TEST_PRODUCTS` in the
 job environment and the `formal.sbatch` settings block, respectively.
 Keep the test settings identical for the six evaluation runs.
 
+### Choose a base LLM
+
+`formal.sbatch` defaults to `qwen` (Qwen2.5-7B-Instruct). Set `MODEL` to
+any local Transformers model key in [`configs/llms.json`](../configs/llms.json)
+and download it before submitting GPU jobs. Mistral is the example below.
+
+```bash
+MODEL=mistral
+.venv/bin/python scripts/download_models.py --models "$MODEL"
+```
+
+When using the default Qwen model, run the stage commands as shown
+throughout this workflow. If you use a different base model, append
+`--llm "$MODEL"` to each stage command. With the example above, the
+following commands select Mistral:
+
+```bash
+sbatch formal.sbatch generate-ads --llm "$MODEL"
+sbatch formal.sbatch train-sft --llm "$MODEL"
+sbatch formal.sbatch train-grpo arena --llm "$MODEL"
+sbatch formal.sbatch evaluate grpo_original_arena --llm "$MODEL"
+```
+
+Pass the same `--llm` for review preparation, reward-data preparation, and
+final pair summaries. Use a SFT adapter trained on the selected base model.
+For a model other than Qwen, candidate and adapter directories include
+its key in their names. The SFT data, reward data, and evaluation directories
+have the key as a subdirectory under the member directory.
+
 The GPU jobs load models offline. Download or train each model before
 its first use and make its directory readable on the compute node.
 
 | Model | How to obtain it | Directory relative to the checkout | Needed for |
 | --- | --- | --- | --- |
-| Qwen2.5-7B-Instruct | Download with `.venv/bin/python scripts/download_models.py --models qwen`. | `models/llm/Qwen2.5-7B-Instruct/` | Candidate generation, SFT, GRPO and evaluation |
+| Selected base LLM | Download with `.venv/bin/python scripts/download_models.py --models "$MODEL"`. | The selected model's `path` in [`configs/llms.json`](../configs/llms.json) | Candidate generation, SFT, GRPO and evaluation |
 | Binary detector | Fine-tune RoBERTa-large on the QProduct splits and export the best validation checkpoint. See the [Detector README](../detector/README.md#prepare-and-inspect-the-qproduct-inputs). | `models/detector/checkpoints/11_roberta_large/qproduct_seed42/best_model/` | Baseline GRPO |
 | Original Arena | Start from the binary detector and train on H.Arena human-voted joke pairs. See [humor preference training](../README.md#train-the-detector-and-humor-preference-model). | `models/detector/preferences/arena_v1_seed42/best_model/` | Reward adaptation and original Arena GRPO |
 | Humor Mechanics | Start from the same binary detector and train on pairs derived from Humor Mechanics funniness ratings. Use the `mechanics` command in [humor preference training](../README.md#train-the-detector-and-humor-preference-model). | `models/detector/preferences/mechanics_v1_seed42/best_model/` | Mechanics GRPO |
@@ -203,6 +232,8 @@ The job reads the four `trainer_state.json`
 files and writes `results/formal_v2/plots/<scope>_grpo_reward_traces_seed42.png`.
 The figure shows mean training reward and within-group reward standard
 deviation using a trailing 10-step mean. Each curve uses its own reward model.
+For another base LLM, append its key, for example
+`sbatch scripts/plot_grpo_rewards.sbatch member_2 --llm mistral`.
 
 ## 6. Generate the six held-out runs
 
@@ -235,6 +266,9 @@ A/B review is for a head-to-head comparison of the two Arena variants.
 ### Six-model scorecard
 
 Export the blind review batches from the repository root.
+For a model selected with `--llm`, append the model key to `eval_dir` below
+when it differs from the default Qwen. For example, use
+`results/formal_v2/evaluation/${MEMBER_ID}/mistral`.
 
 ```bash
 eval_dir="results/formal_v2/evaluation/${MEMBER_ID}"

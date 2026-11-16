@@ -6,6 +6,8 @@ import math
 from pathlib import Path
 from statistics import fmean
 
+from formal_models import model_registry
+
 
 ARMS = (
     ("baseline", "Baseline detector", "#285A92", "-"),
@@ -74,21 +76,25 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scope", nargs="?", default="member_1",
                         choices=("member_1", "member_2", "member_3", "member_4", "team"))
+    parser.add_argument("--llm", choices=model_registry(), default="qwen")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run-root", type=Path, default=Path("results/formal_v2"))
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
+    plot_scope = args.scope if args.llm == "qwen" else f"{args.scope}_{args.llm}"
     output = args.output or (
-        args.run_root / "plots" / f"{args.scope}_grpo_reward_traces_seed{args.seed}.png"
+        args.run_root / "plots" / f"{plot_scope}_grpo_reward_traces_seed{args.seed}.png"
     )
     try:
         traces = {
             arm: read_trace(
-                args.run_root / f"{args.scope}_qwen_grpo_{arm}_seed{args.seed}" / "trainer_state.json"
+                args.run_root / f"{args.scope}_{args.llm}_grpo_{arm}_seed{args.seed}" / "trainer_state.json"
             )
             for arm, *_ in ARMS
         }
         label = "Team" if args.scope == "team" else f"Member {args.scope.rsplit('_', 1)[1]}"
+        if args.llm != "qwen":
+            label = f"{label} / {args.llm}"
         plot(traces, label, args.seed, output)
     except ModuleNotFoundError as error:
         if error.name == "matplotlib":

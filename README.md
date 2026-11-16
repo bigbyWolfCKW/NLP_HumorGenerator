@@ -52,8 +52,20 @@ handoff under `data/formal_v1/`:
 - `${MEMBER_ID}_train.csv`
 - `${MEMBER_ID}_test.csv`
 
-Download Qwen2.5-7B-Instruct before generation, SFT, GRPO, or evaluation.
-The download command is in [Step 1 of the full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
+### Download your base LLM
+
+Choose a local Transformers model key from [`configs/llms.json`](configs/llms.json).
+The default is `qwen` (Qwen2.5-7B-Instruct).
+
+```bash
+MODEL=qwen
+.venv/bin/python scripts/download_models.py --models "$MODEL"
+```
+
+When using the default Qwen model, omit `--llm` from the Slurm commands.
+If you use a different base model, append `--llm "$MODEL"` to each stage in
+the [formal workflow](docs/formal-workflow.md#choose-a-base-llm), for example
+`sbatch formal.sbatch generate-ads --llm mistral`.
 The reward-training and GRPO checkpoint paths are listed by stage in
 the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
 

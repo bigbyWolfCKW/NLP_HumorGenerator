@@ -10,6 +10,8 @@ import sys
 from datetime import datetime, timezone
 from pathlib import Path
 
+from formal_models import compatible_resume, model_registry
+
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
 
@@ -134,7 +136,7 @@ def adapter_for(variant):
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
     p.add_argument("--member-id", choices=[f"member_{i}" for i in range(1, 5)], required=True)
-    p.add_argument("--llm", choices=["qwen"], default="qwen")
+    p.add_argument("--llm", choices=model_registry(), default="qwen")
     p.add_argument("--model-variant", choices=VARIANTS + EXPLICIT_VARIANTS, default="sft")
     p.add_argument("--adapter", help="Path to a completed run's final_adapter directory")
     p.add_argument("--products")
@@ -161,14 +163,17 @@ def main(args=None):
     products = select_products(source, read_json(core_path), args.member_id,
                                args.num_products, args.seed)
     prompts = [render_prompt(template, row) for row in products]
-    registry = read_json(PROJECT / "configs/llms.json")[args.llm]
+    registry = model_registry()[args.llm]
     base_path = absolute(registry["path"]).resolve()
     if not (base_path / "config.json").is_file():
         raise FileNotFoundError(f"Missing base model configuration: {base_path}")
     adapter_arg = getattr(args, "adapter", None)
     if args.model_variant == "base" and adapter_arg:
         raise ValueError("The base evaluation must run without an adapter")
-    if args.model_variant in EXPLICIT_VARIANTS and not adapter_arg:
+    requires_adapter = args.model_variant in EXPLICIT_VARIANTS or (
+        args.llm != "qwen" and args.model_variant != "base"
+    )
+    if requires_adapter and not adapter_arg:
         raise ValueError("This model variant requires --adapter")
     adapter = absolute(adapter_arg).resolve() if adapter_arg else adapter_for(args.model_variant)
     if adapter is not None:
@@ -232,7 +237,7 @@ def main(args=None):
         "selection_policy": "retain all outputs; no format retries",
     }
     if args.resume:
-        if read_json(output / "run.json")["settings"] != settings:
+        if not compatible_resume(read_json(output / "run.json")["settings"], settings, args.llm, __file__):
             raise ValueError("Resume inputs, model or settings changed")
         if (output / "completed.json").exists():
             print("Evaluation already complete:", output, flush=True)

@@ -17,7 +17,20 @@ export SLURM_SUBMIT_DIR="$PWD"
 # EDIT SETTINGS HERE
 MEMBER_ID="${MEMBER_ID:-member_1}"
 STAGE="${1:-generate-ads}"
-VARIANT="${2:-arena}"
+VARIANT="arena"
+LLM="qwen"
+if (( $# > 0 )); then shift; fi
+if (( $# > 0 )) && [[ "$1" != --* ]]; then
+    VARIANT="${1:-arena}"
+    shift
+fi
+if (( $# > 0 )); then
+    if (( $# != 2 )) || [[ "$1" != "--llm" || ! "$2" =~ ^[a-zA-Z0-9_-]+$ ]]; then
+        printf 'Usage: sbatch formal.sbatch <stage> [variant] [--llm MODEL]\n' >&2
+        exit 2
+    fi
+    LLM="$2"
+fi
 SEED=42
 RESUME="${RESUME:-no}"
 
@@ -29,16 +42,22 @@ GRPO_STEPS=200
 PROMPT_FILE="configs/prompts/product_humor_v3.txt"
 
 RUN_ROOT="results/formal_v2"
-CANDIDATE_RUN="${CANDIDATE_RUN:-$RUN_ROOT/${MEMBER_ID}_qwen_product_humor_v3}"
-SFT_DATA="data/formal_v2/sft/$MEMBER_ID"
-REWARD_ROOT="data/formal_v2/reward/$MEMBER_ID"
+CANDIDATE_RUN="${CANDIDATE_RUN:-$RUN_ROOT/${MEMBER_ID}_${LLM}_product_humor_v3}"
+DATA_SCOPE="$MEMBER_ID"
+REWARD_SCOPE="$MEMBER_ID"
+if [[ "$LLM" != "qwen" ]]; then
+    DATA_SCOPE="$MEMBER_ID/$LLM"
+    REWARD_SCOPE="${MEMBER_ID}_$LLM"
+fi
+SFT_DATA="data/formal_v2/sft/$DATA_SCOPE"
+REWARD_ROOT="data/formal_v2/reward/$DATA_SCOPE"
 PAIR_DIR="$REWARD_ROOT/humor_pairwise"
 REWARD_DATA="${REWARD_DATA:-$REWARD_ROOT/reward_data_review}"
-REWARD_MODEL="${REWARD_MODEL:-models/detector/preferences/${MEMBER_ID}_product_humor_review}"
+REWARD_MODEL="${REWARD_MODEL:-models/detector/preferences/${REWARD_SCOPE}_product_humor_review}"
 
-SFT_RUN="$RUN_ROOT/${MEMBER_ID}_qwen_sft_pooled"
-GRPO_PREFIX="$RUN_ROOT/${MEMBER_ID}_qwen_grpo"
-EVAL_ROOT="$RUN_ROOT/evaluation/$MEMBER_ID"
+SFT_RUN="$RUN_ROOT/${MEMBER_ID}_${LLM}_sft_pooled"
+GRPO_PREFIX="$RUN_ROOT/${MEMBER_ID}_${LLM}_grpo"
+EVAL_ROOT="$RUN_ROOT/evaluation/$DATA_SCOPE"
 LEFT_ARM="${LEFT_ARM:-grpo_original_arena}"
 RIGHT_ARM="${RIGHT_ARM:-grpo_adapted}"
 FINAL_PAIR_DIR="$EVAL_ROOT/blind_${LEFT_ARM}_vs_${RIGHT_ARM}"
@@ -74,7 +93,7 @@ sft_file="$SFT_DATA/reviewed_product_ads_train.jsonl"
 case "$STAGE" in
     generate-ads)
         need "$train_csv" "$PROMPT_FILE"
-        run generate-ads --owner "$MEMBER_ID" --input "$train_csv" \
+        run generate-ads --owner "$MEMBER_ID" --input "$train_csv" --llm "$LLM" \
             --prompt-file "$PROMPT_FILE" --num-products "$TRAIN_PRODUCTS" \
             --candidates "$TRAIN_CANDIDATES" --seed "$SEED" \
             --output "$CANDIDATE_RUN" "${resume_args[@]}"
@@ -103,7 +122,7 @@ case "$STAGE" in
 
     train-sft)
         need "$sft_file"
-        run train-sft --train-file "$sft_file" --output "$SFT_RUN" \
+        run train-sft --train-file "$sft_file" --output "$SFT_RUN" --llm "$LLM" \
             "${resume_args[@]}"
         ;;
 
@@ -147,7 +166,7 @@ case "$STAGE" in
             need "$adapter_run/completed.json"
             adapter_args=(--adapter "$adapter_run/final_adapter")
         fi
-        run evaluate --member-id "$MEMBER_ID" --llm qwen \
+        run evaluate --member-id "$MEMBER_ID" --llm "$LLM" \
             --model-variant "$VARIANT" "${adapter_args[@]}" \
             --products "$test_csv" --num-products "$TEST_PRODUCTS" \
             --candidates-per-product "$TEST_CANDIDATES" --seed "$SEED" \
