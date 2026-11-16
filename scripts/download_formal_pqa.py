@@ -17,19 +17,28 @@ FILES = {"Humorous.csv": "1", "Non-humorous-unbiased.csv": "0"}
 FIELDS = ("question", "product_description", "image_url", "label", "product_group")
 
 
+def readable_raw_csv(path):
+    try:
+        with path.open(encoding="utf-8-sig", newline="") as stream:
+            reader = csv.DictReader(stream)
+            return set(FIELDS[:-1]).issubset(reader.fieldnames or []) and next(reader, None) is not None
+    except (FileNotFoundError, UnicodeError, csv.Error):
+        return False
+
+
 def download(raw):
     raw.mkdir(parents=True, exist_ok=True)
     for name in FILES:
         target = raw / name
-        if target.is_file():
+        if readable_raw_csv(target):
             continue
         with TemporaryDirectory(dir=raw) as temporary:
             staged = Path(temporary) / name
             with urlopen(f"{BUCKET}/{name}", timeout=60) as response, staged.open("wb") as stream:
                 shutil.copyfileobj(response, stream)
-            if not staged.stat().st_size:
-                raise ValueError(f"Empty download: {name}")
-            staged.rename(target)
+            if not readable_raw_csv(staged):
+                raise ValueError(f"Empty or invalid CSV download: {name}")
+            staged.replace(target)
 
 
 def read_groups(raw):

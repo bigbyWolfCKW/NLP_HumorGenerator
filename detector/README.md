@@ -35,48 +35,40 @@ corresponding path. Record the source revision used for each run.
 | [DeBERTa-v3-base](https://huggingface.co/microsoft/deberta-v3-base) | `models/detector/models/deberta-v3-base/` |
 | [RoBERTa-large](https://huggingface.co/FacebookAI/roberta-large) | `models/detector/models/roberta-large/` |
 
-Place the shared QProduct splits in `data/source/processed/unbiased/` as
-`train.csv` and `validation.csv`.
-Each CSV needs `question`, `product_description`, `product_group`, and
-`label` (0 or 1). Each model receives the question and description as paired
-input.
+**First run.** Submit one job from the repository root. The job requests one GPU.
 
 ```bash
-.venv/bin/python -m detector eda \
-  --detector roberta --detector deberta --detector roberta-large --max-length 128
+sbatch scripts/detector.sbatch prepare
 ```
 
-Review the label counts and product groups. A product appearing in both
-splits causes the check to fail. The tokenizer checks verify the local
-weight files, load each tokenizer, and show how many question–description
-pairs exceed the training limit of 128 tokens. Run
-`.venv/bin/python -m detector eda` to inspect just the CSVs while preparing
-the backbones.
+The job downloads the Amazon PQA CSVs to `data/source/raw/amazon_pqa/`,
+creates product-disjoint train, validation, and test splits under
+`data/source/processed/unbiased/`, and runs EDA. Check
+`detector-<job-id>.log` for label counts, product overlap, and the number of
+question–description pairs over 128 tokens for each of the three tokenizers.
+Wait for the job to complete successfully before submitting detector training.
+
+**Existing data.** Use the same command. Existing splits go straight to EDA.
+If the splits have yet to be created, the job reuses readable raw CSVs and
+downloads missing or invalid ones before splitting. EDA checks the required
+columns and fails on product overlap.
 
 ## Compare the QProduct Transformer detectors
 
-Use the same train and validation splits and seed `42` for all three runs.
-Each output directory must be new. If your allocation requires an explicit
-Slurm account, add `--account=YOUR_SLURM_ACCOUNT` before the script name.
+After preparation completes, submit one job per detector. The batch script
+uses the same QProduct splits and training settings for all three jobs and
+sets each model's checkpoint directory. Each output directory must be new.
 
 ```bash
-qproduct_args=(
-  --train-csv data/source/processed/unbiased/train.csv
-  --validation-csv data/source/processed/unbiased/validation.csv
-  --seed 42 --epochs 3 --batch-size 16 --max-length 128 --learning-rate 2e-5
-)
-
-sbatch scripts/detector.sbatch train --detector roberta "${qproduct_args[@]}" \
-  --output models/detector/checkpoints/roberta_qproduct_seed42
-
-sbatch scripts/detector.sbatch train --detector deberta "${qproduct_args[@]}" \
-  --output models/detector/checkpoints/10_deberta_v3_base/qproduct_seed42
-
-sbatch scripts/detector.sbatch train --detector roberta-large "${qproduct_args[@]}" \
-  --output models/detector/checkpoints/11_roberta_large/qproduct_seed42
+sbatch scripts/detector.sbatch train-qproduct roberta
+sbatch scripts/detector.sbatch train-qproduct deberta
+sbatch scripts/detector.sbatch train-qproduct roberta-large
 ```
 
-Each run saves its highest-validation-macro-F1 epoch under `best_model/`,
+Under `models/detector/checkpoints/`, the jobs write to
+`roberta_qproduct_seed42/`, `10_deberta_v3_base/qproduct_seed42/`, and
+`11_roberta_large/qproduct_seed42/`, respectively. Each run saves its
+highest-validation-macro-F1 epoch under `best_model/`,
 including `model.safetensors`, the model config, and the tokenizer. Compare
 `validation.macro_f1` in the three `best_validation.json` files to rank the
 models. Baseline GRPO and the

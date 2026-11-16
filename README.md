@@ -65,40 +65,27 @@ the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
    Compare the best checkpoint from each model by validation macro-F1.
    For the downstream ProductPunch runs, use the RoBERTa-large QProduct
    checkpoint at `models/detector/checkpoints/11_roberta_large/qproduct_seed42/best_model/`.
-2. Prepare the preference datasets under
-   `data/source/preferences/humor_preference_v1/`. Download the
-   [H.Arena votes](https://github.com/SaveTheRbtz/humor/blob/main/data/humor_arena.choices.20250812.json)
-   as `h_arena.json`. Place the six `jokes-*.json` rating files from
-   [Humor Mechanics](https://github.com/altsoph/humor-mechanics) in the
-   `humor-mechanics/` subdirectory. From the repository root, run:
+2. **First run.** From the repository root on SuperPOD, submit the source
+   you want to train. Each job requests one GPU.
 
    ```bash
-   .venv/bin/python data/source/preferences/humor_preference_v1/prepare_preferences.py
-   ```
-  It writes `train.jsonl` and `validation.jsonl` in
-   `pairwise/arena/` and `pairwise/mechanics/`.
-    The preparation script requires a new `pairwise/` directory. It splits
-   the H.Arena votes by session and removes joke overlap across splits.
-
-   For Humor Mechanics it splits the jokes before deriving pairs from
-   their ratings.
-
-3. Train each reward model starting from the QProduct RoBERTa-large
-   checkpoint:
-
-   ```bash
-   sbatch scripts/humor_preference_v1.sbatch \
-     --source arena --seed 42 --steps 300 --batch-size 8 --learning-rate 1e-5
-   sbatch scripts/humor_preference_v1.sbatch \
-     --source mechanics --seed 42 --steps 300 --batch-size 8 --learning-rate 1e-5
+   sbatch scripts/humor_preference_v1.sbatch --source arena
+   sbatch scripts/humor_preference_v1.sbatch --source mechanics
    ```
 
-   Training selects the checkpoint with the lowest validation loss and
-   exports `models/detector/preferences/arena_v1_seed42/best_model/` and
-   `models/detector/preferences/mechanics_v1_seed42/best_model/` for the
-   respective jobs. For Adapted Arena,
-   continue with [reward data preparation and training](docs/formal-workflow.md#3-prepare-the-reviewed-training-data)
-   using your member's reviewed pairs.
+   The job fetches [H.Arena votes](https://github.com/SaveTheRbtz/humor/blob/main/data/humor_arena.choices.20250812.json)
+   or [Humor Mechanics ratings](https://github.com/altsoph/humor-mechanics),
+   prepares train and validation pairs, and trains from the QProduct
+   RoBERTa-large checkpoint. The selected checkpoint is saved to
+   `models/detector/preferences/arena_v1_seed42/best_model/` or
+   `models/detector/preferences/mechanics_v1_seed42/best_model/`.
+
+   **Existing data.** Use the same `sbatch` command. If both pair files are
+   readable and nonempty, the job goes straight to training. If pairs need
+   rebuilding, it reuses valid raw files and downloads missing or invalid ones.
+
+   For Adapted Arena, continue with the
+   [member-specific reward workflow](docs/formal-workflow.md#3-prepare-the-reviewed-training-data).
 
 ## Train SFT
 
