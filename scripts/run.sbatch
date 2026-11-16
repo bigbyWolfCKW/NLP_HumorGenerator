@@ -29,6 +29,7 @@ case "${1:-}" in
     train-grpo) entry=scripts/train_formal_grpo_v2.py ;;
     evaluate) entry=scripts/evaluate_formal_ads_v1.py ;;
     prepare-final-pairs) entry=scripts/prepare_final_ad_pairs.py ;;
+    summarize-final-pairs) entry=scripts/summarize_final_ad_pairs.py ;;
     *) exec "$PROJECT_PYTHON" main.py "$@" ;;
 esac
 

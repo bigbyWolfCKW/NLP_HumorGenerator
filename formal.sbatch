@@ -162,6 +162,10 @@ case "$STAGE" in
             --seed "$SEED"
         ;;
 
+    summarize-final-pairs)
+        run summarize-final-pairs --review-dir "$FINAL_PAIR_DIR"
+        ;;
+
     *)
         echo "Unknown stage: $STAGE" >&2
         exit 2

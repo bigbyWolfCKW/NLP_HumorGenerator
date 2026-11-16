@@ -122,6 +122,10 @@ and use them with the private key to generate a summary for each model.
   --review-dir "results/formal_v2/evaluation/${MEMBER_ID}/blind_six_models"
 ```
 
+For the optional [Original Arena versus Adapted Arena review](docs/formal-workflow.md#optional-original-arena-versus-adapted-arena),
+run `bash formal.sbatch summarize-final-pairs` after collecting the A/B ratings.
+The command writes `final_pair_summary.csv` to the pair directory.
+
 The command checks that every group has six ratings and writes
 `six_model_summary.csv` in the review directory. Step 7 also covers the
 optional Original Arena versus Adapted Arena A/B comparison.

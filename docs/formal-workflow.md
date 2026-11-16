@@ -271,8 +271,15 @@ The default output directory is
 
 1. Give the AI only `blind_pairs.jsonl` and the [final held-out evaluation prompt](formal-review-prompts.md#final-held-out-evaluation).
 2. Save the response as `final_reviewed_pairs.jsonl` in the same directory. Check that each `pair_id` appears exactly once.
-3. Keep `PRIVATE_pair_key.jsonl` on SuperPOD. Use it to map A/B choices back to model variants.
-4. Report wins per model, ties, and neither for each criterion.
+3. Keep `PRIVATE_pair_key.jsonl` on SuperPOD and run the summary with the same `MEMBER_ID`.
+
+```bash
+bash formal.sbatch summarize-final-pairs
+```
+
+The command writes `final_pair_summary.csv` in the same directory. It reports
+compliance by model, wins, ties, and neither for each criterion, and humor
+results for pairs where both ads pass compliance.
 
 Use the final reviews for evaluation only.
 
