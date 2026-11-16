@@ -107,7 +107,7 @@ the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
 
 New runs write to `results/formal_v2/${MEMBER_ID}_qwen_product_humor_v3/`
 by default. Set `CANDIDATE_RUN` to that directory or to the directory
-for your [existing candidate run](docs/formal-workflow.md#2-reuse-existing-training-data).
+for your [existing candidate run](docs/formal-workflow.md#reuse-existing-training-data).
 
 | Step | Run or save | Wait for this output |
 | --- | --- | --- |

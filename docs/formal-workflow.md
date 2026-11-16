@@ -142,12 +142,30 @@ its first use and make its directory readable on the compute node.
 | Original Arena | Start from the binary detector and train on H.Arena human-voted joke pairs. See [humor preference training](../README.md#train-the-detector-and-humor-preference-model). | `models/detector/preferences/arena_v1_seed42/best_model/` | Reward adaptation and original Arena GRPO |
 | Humor Mechanics | Start from the same binary detector and train on pairs derived from Humor Mechanics funniness ratings. Use the `mechanics` command in [humor preference training](../README.md#train-the-detector-and-humor-preference-model). | `models/detector/preferences/mechanics_v1_seed42/best_model/` | Mechanics GRPO |
 
-## 2. Reuse existing training data
+## 2. Generate or reuse training candidates
+
+After setting `MEMBER_ID`, submit the candidate generation job from the
+repository root. This example uses the default Qwen base:
+
+```bash
+export CANDIDATE_RUN="results/formal_v2/${MEMBER_ID}_qwen_product_humor_v3"
+sbatch formal.sbatch generate-ads
+```
+
+For another base model, use its key in the candidate directory and append
+`--llm MODEL` to the submission. Wait for `$CANDIDATE_RUN/completed.json`
+and `$CANDIDATE_RUN/candidates.csv` before starting Step 3. Check progress
+with `squeue -j JOB_ID` and `humor-formal-JOB_ID.log`.
+
+### Reuse existing training data
 
 | Existing data | Where to put it | What to set |
 | --- | --- | --- |
 | Training CSV from the current facts import | `data/formal_v1/enrichment/${MEMBER_ID}_train.csv` | Set `TRAIN_CSV` to this path and use the matching assignment. |
 | Completed candidate run | Keep `candidates.csv`, `completed.json`, and any matching `reviewed_candidates.csv` together in the run directory | Set `CANDIDATE_RUN` to that directory and continue at Step 3. |
+
+Use the same candidate run for SFT review, reward pairs, and all four
+GRPO runs. Re-export `CANDIDATE_RUN` if you start a new shell.
 
 **Pooled run (`MEMBER_ID=all`).** By default, generation combines the four
 member training CSVs into `data/formal_v1/all_train.csv`. Set `TRAIN_CSV`
