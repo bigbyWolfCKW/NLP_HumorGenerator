@@ -16,6 +16,7 @@ from transformers import (
 )
 
 from formal_models import compatible_resume, model_registry
+from formal_scope import SCOPES, includes_owner
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -61,7 +62,7 @@ def main():
         "--input",
         default="data/formal_v1/member_1_train_first100.csv",
     )
-    parser.add_argument("--owner", default="member_1")
+    parser.add_argument("--owner", choices=SCOPES, default="member_1")
     parser.add_argument("--candidates", type=int, default=4)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--llm", choices=models, default="qwen")
@@ -102,7 +103,7 @@ def main():
                 raise ValueError(
                     f"Assignment field changed: {identity}, {key}"
                 )
-        if row["owner"] != args.owner or row["split"] != "train":
+        if not includes_owner(args.owner, row["owner"]) or row["split"] != "train":
             raise ValueError("Only this owner's Train products are allowed")
 
         if row.get("news_context", "").strip():

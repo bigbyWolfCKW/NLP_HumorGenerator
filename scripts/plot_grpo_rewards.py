@@ -7,6 +7,7 @@ from pathlib import Path
 from statistics import fmean
 
 from formal_models import model_registry
+from formal_scope import SCOPES
 
 
 ARMS = (
@@ -75,7 +76,7 @@ def plot(traces, scope, seed, output):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("scope", nargs="?", default="member_1",
-                        choices=("member_1", "member_2", "member_3", "member_4", "team"))
+                        choices=(*SCOPES, "team"))
     parser.add_argument("--llm", choices=model_registry(), default="qwen")
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--run-root", type=Path, default=Path("results/formal_v2"))
@@ -92,7 +93,8 @@ def main():
             )
             for arm, *_ in ARMS
         }
-        label = "Team" if args.scope == "team" else f"Member {args.scope.rsplit('_', 1)[1]}"
+        labels = {"all": "All members", "team": "Team"}
+        label = labels.get(args.scope) or f"Member {args.scope.rsplit('_', 1)[1]}"
         if args.llm != "qwen":
             label = f"{label} / {args.llm}"
         plot(traces, label, args.seed, output)

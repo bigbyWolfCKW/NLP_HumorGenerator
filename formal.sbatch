@@ -34,9 +34,9 @@ fi
 SEED=42
 RESUME="${RESUME:-no}"
 
-TRAIN_PRODUCTS="${TRAIN_PRODUCTS:-100}"
+TRAIN_PRODUCTS="${TRAIN_PRODUCTS:-}"
 TRAIN_CANDIDATES=4
-TEST_PRODUCTS=50
+TEST_PRODUCTS="${TEST_PRODUCTS:-}"
 TEST_CANDIDATES=4
 GRPO_STEPS=200
 PROMPT_FILE="configs/prompts/product_humor_v3.txt"
@@ -64,7 +64,11 @@ FINAL_PAIR_DIR="$EVAL_ROOT/blind_${LEFT_ARM}_vs_${RIGHT_ARM}"
 # END OF SETTINGS
 
 case "$MEMBER_ID" in
-    member_1|member_2|member_3|member_4) ;;
+    member_1|member_2|member_3|member_4)
+        TRAIN_PRODUCTS="${TRAIN_PRODUCTS:-100}"
+        TEST_PRODUCTS="${TEST_PRODUCTS:-50}"
+        ;;
+    all) ;;
     *) echo "Invalid MEMBER_ID: $MEMBER_ID" >&2; exit 2 ;;
 esac
 
@@ -89,12 +93,19 @@ fi
 train_csv="${TRAIN_CSV:-data/formal_v1/${MEMBER_ID}_train.csv}"
 test_csv="data/formal_v1/${MEMBER_ID}_test.csv"
 sft_file="$SFT_DATA/reviewed_product_ads_train.jsonl"
+train_limit=()
+test_limit=()
+if [[ -n "$TRAIN_PRODUCTS" ]]; then train_limit=(--num-products "$TRAIN_PRODUCTS"); fi
+if [[ -n "$TEST_PRODUCTS" ]]; then test_limit=(--num-products "$TEST_PRODUCTS"); fi
 
 case "$STAGE" in
     generate-ads)
+        if [[ "$MEMBER_ID" == "all" && -z "${TRAIN_CSV:-}" ]]; then
+            .venv/bin/python scripts/prepare_all_formal_inputs.py train
+        fi
         need "$train_csv" "$PROMPT_FILE"
         run generate-ads --owner "$MEMBER_ID" --input "$train_csv" --llm "$LLM" \
-            --prompt-file "$PROMPT_FILE" --num-products "$TRAIN_PRODUCTS" \
+            --prompt-file "$PROMPT_FILE" "${train_limit[@]}" \
             --candidates "$TRAIN_CANDIDATES" --seed "$SEED" \
             --output "$CANDIDATE_RUN" "${resume_args[@]}"
         ;;
@@ -151,6 +162,9 @@ case "$STAGE" in
         ;;
 
     evaluate)
+        if [[ "$MEMBER_ID" == "all" ]]; then
+            .venv/bin/python scripts/prepare_all_formal_inputs.py test
+        fi
         need "$test_csv" "$PROMPT_FILE"
         case "$VARIANT" in
             base) adapter_run="" ;;
@@ -168,7 +182,7 @@ case "$STAGE" in
         fi
         run evaluate --member-id "$MEMBER_ID" --llm "$LLM" \
             --model-variant "$VARIANT" "${adapter_args[@]}" \
-            --products "$test_csv" --num-products "$TEST_PRODUCTS" \
+            --products "$test_csv" "${test_limit[@]}" \
             --candidates-per-product "$TEST_CANDIDATES" --seed "$SEED" \
             --prompt-file "$PROMPT_FILE" --output "$EVAL_ROOT/$VARIANT" \
             "${resume_args[@]}"

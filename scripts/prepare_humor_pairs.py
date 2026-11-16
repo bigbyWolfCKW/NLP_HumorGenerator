@@ -7,6 +7,8 @@ import random
 from collections import defaultdict
 from pathlib import Path
 
+from formal_scope import SCOPES, includes_owner
+
 
 def product_context(row):
     return {
@@ -22,7 +24,7 @@ def prepare_pairs(rows, completion, owner, seed):
     products = defaultdict(list)
     candidate_ids = set()
     for row in rows:
-        if row["owner"] != owner or row["split"] != "train":
+        if not includes_owner(owner, row["owner"]) or row["split"] != "train":
             raise ValueError(f"Expected only {owner} training candidates")
         candidate_id = row["candidate_id"].strip()
         product_id = row["product_id"].strip()
@@ -98,7 +100,7 @@ def write_jsonl(path, rows):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--owner", choices=("member_1", "member_2", "member_3", "member_4"),
+        "--owner", choices=SCOPES,
         required=True,
     )
     parser.add_argument("--run-dir", type=Path, required=True)

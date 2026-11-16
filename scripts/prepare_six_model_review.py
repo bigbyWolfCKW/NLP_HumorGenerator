@@ -4,6 +4,7 @@ import argparse
 import random
 from pathlib import Path
 
+from formal_scope import includes_owner
 from prepare_final_ad_pairs import read_run
 from prepare_humor_pairs import product_context, write_jsonl
 
@@ -32,7 +33,7 @@ def prepare(root, seed):
             raise ValueError(f"{variant} candidate keys differ")
         if any(
             row["model_variant"] != variant or row["split"] != "test"
-            or row["owner"] != reference["member_id"]
+            or not includes_owner(reference["member_id"], row["owner"])
             for row in rows.values()
         ):
             raise ValueError(f"{variant} contains a candidate from the wrong arm or split")

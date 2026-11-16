@@ -8,6 +8,8 @@ import re
 from collections import Counter
 from pathlib import Path
 
+from formal_scope import SCOPES, includes_owner
+
 PROJECT = Path(__file__).resolve().parents[1]
 
 
@@ -33,7 +35,7 @@ def sha256(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--owner", choices=("member_1", "member_2", "member_3", "member_4"),
+        "--owner", choices=SCOPES,
         default="member_1",
     )
     parser.add_argument(
@@ -91,7 +93,7 @@ def main():
         for field in ("product_family_id", "owner", "split"):
             if row[field] != assignment[field]:
                 raise ValueError(f"Assignment mismatch: {candidate_id}")
-        if row["owner"] != args.owner or row["split"] != "train":
+        if not includes_owner(args.owner, row["owner"]) or row["split"] != "train":
             raise ValueError(f"Unexpected owner or split: {candidate_id}")
 
         text = row["ad_text"]

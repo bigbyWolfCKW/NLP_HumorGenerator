@@ -66,6 +66,10 @@ When using the default Qwen model, omit `--llm` from the Slurm commands.
 If you use a different base model, append `--llm "$MODEL"` to each stage in
 the [formal workflow](docs/formal-workflow.md#choose-a-base-llm), for example
 `sbatch formal.sbatch generate-ads --llm mistral`.
+
+To run one pooled experiment across all four assignments, use
+`MEMBER_ID=all`. The [pooled workflow](docs/formal-workflow.md#run-one-pooled-experiment)
+also accepts a manually combined SFT JSONL.
 The reward-training and GRPO checkpoint paths are listed by stage in
 the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
 
@@ -125,7 +129,7 @@ Use the [review prompts](docs/formal-review-prompts.md) for the
 corresponding stages.
 
 For [optional GRPO reward plots](docs/formal-workflow.md#optional-grpo-reward-plots),
-set `SCOPE` to `member_1`, `member_2`, `member_3`, `member_4`, or `team`,
+set `SCOPE` to a member ID, `all`, or `team`,
 then submit `sbatch scripts/plot_grpo_rewards.sbatch "$SCOPE"`.
 
 After all six variants finish generating held-out ads, go to

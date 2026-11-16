@@ -21,6 +21,9 @@ from transformers import (
 )
 from trl import GRPOConfig, GRPOTrainer
 
+from formal_models import compatible_resume
+from formal_scope import SCOPES, includes_owner
+
 
 PROJECT = Path(__file__).resolve().parents[1]
 REWARDS = {
@@ -69,7 +72,7 @@ def load_training_rows(path, core_path, owner, expected_candidates):
             for field in ("product_family_id", "owner", "split"):
                 if row[field] != assignment[field]:
                     raise ValueError(f"Assignment mismatch: {candidate_id}")
-            if row["owner"] != owner or row["split"] != "train":
+            if not includes_owner(owner, row["owner"]) or row["split"] != "train":
                 raise ValueError(f"Only {owner} training products are allowed")
             prompt = row["prompt"]
             if not prompt.strip() or "News context" in prompt:
@@ -127,7 +130,7 @@ def invalid_format(text):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument(
-        "--owner", choices=("member_1", "member_2", "member_3", "member_4"),
+        "--owner", choices=SCOPES,
         required=True,
     )
     parser.add_argument("--candidates", type=Path, required=True)
@@ -218,7 +221,7 @@ def main():
 
     resume = None
     if args.resume:
-        if read_json(output / "run.json") != settings:
+        if not compatible_resume(read_json(output / "run.json"), settings, None, __file__):
             raise ValueError("Resume configuration or input files changed")
         if (output / "completed.json").exists():
             print("GRPO already completed:", output, flush=True)
@@ -356,7 +359,7 @@ def main():
 
     output_head = trainer.model.get_output_embeddings()
     if output_head is None or not hasattr(output_head, "weight"):
-        raise RuntimeError("Cannot locate the Qwen output head")
+        raise RuntimeError("Cannot locate the model output head")
     output_head.register_forward_pre_hook(align_output_head_input)
     trainer.model.enable_input_require_grads()
     trainable_names = [

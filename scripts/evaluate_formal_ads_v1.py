@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from formal_models import compatible_resume, model_registry
+from formal_scope import SCOPES, includes_owner
 
 PROJECT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(PROJECT))
@@ -69,8 +70,8 @@ def select_products(source, core, member, limit, seed):
         for field in ("product_family_id", "owner", "split"):
             if row[field] != assignment[field]:
                 raise ValueError(f"Assignment mismatch for {pid}: {field}")
-        if row["owner"] != member or row["split"] != "test":
-            raise ValueError("Input must contain only this member's test products")
+        if not includes_owner(member, row["owner"]) or row["split"] != "test":
+            raise ValueError(f"Input must contain only test products for {member}")
         if not row["product_name"].strip() or not row["product_facts"].strip():
             raise ValueError("Missing product name or information")
     rows.sort(key=lambda row: (
@@ -135,7 +136,7 @@ def adapter_for(variant):
 
 def parser():
     p = argparse.ArgumentParser(description=__doc__)
-    p.add_argument("--member-id", choices=[f"member_{i}" for i in range(1, 5)], required=True)
+    p.add_argument("--member-id", choices=SCOPES, required=True)
     p.add_argument("--llm", choices=model_registry(), default="qwen")
     p.add_argument("--model-variant", choices=VARIANTS + EXPLICIT_VARIANTS, default="sft")
     p.add_argument("--adapter", help="Path to a completed run's final_adapter directory")

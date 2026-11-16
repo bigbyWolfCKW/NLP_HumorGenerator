@@ -15,7 +15,8 @@ module load slurm
 export MEMBER_ID=member_4
 ```
 
-Replace `member_4` with your assigned ID (`member_1` through `member_4`).
+Replace `member_4` with your assigned ID (`member_1` through `member_4`),
+or use `all` for a pooled experiment.
 Set it again in each new terminal. The launcher defaults to `member_1`
 when the variable is unset. Check that the Slurm account in both
 `scripts/prepare_formal_data.sbatch` and `formal.sbatch` matches your
@@ -61,18 +62,46 @@ your assigned ID in the CSV filenames.
 | `${MEMBER_ID}_train.csv` | Training candidate generation |
 | `${MEMBER_ID}_test.csv` | Held-out evaluation |
 
-Check the uploaded files from the checkout root.
+For an individual run, check the uploaded files from the checkout root.
 
 ```bash
 ls -lh data/formal_v1/assignment_core.json
 ls -lh "data/formal_v1/${MEMBER_ID}_train.csv" "data/formal_v1/${MEMBER_ID}_test.csv"
 ```
 
-The launcher uses 100 training products, 50 test products, four ads per
-product and seed 42 by default. If the assigned CSVs contain fewer
-eligible products, set `TRAIN_PRODUCTS` and `TEST_PRODUCTS` in the
-job environment and the `formal.sbatch` settings block, respectively.
+Individual runs use 100 training products, 50 test products, four ads per
+product and seed 42 by default. Set `TRAIN_PRODUCTS` or `TEST_PRODUCTS`
+in the job environment to use a smaller subset.
 Keep the test settings identical for the six evaluation runs.
+
+### Run one pooled experiment
+
+Set `MEMBER_ID=all` on each formal stage to run one experiment using the
+four member assignments. On first use, generation and evaluation build
+`data/formal_v1/all_train.csv` and `data/formal_v1/all_test.csv` from the
+four matching splits. Run paths use `all` in place of the member ID. The
+combined CSVs preserve each product's owner and split for assignment checks.
+The pooled run uses every product from the selected split by default.
+
+```bash
+export MEMBER_ID=all
+sbatch formal.sbatch generate-ads
+```
+
+For SFT, either review the pooled candidates and run
+`bash formal.sbatch prepare-sft`, or combine the four members' approved
+training JSONLs manually and save the result as
+`data/formal_v2/sft/all/reviewed_product_ads_train.jsonl`.
+For another base model, save it under
+`data/formal_v2/sft/all/<model>/reviewed_product_ads_train.jsonl`.
+Use training samples only. Both routes use the same training command
+and write to the same pooled adapter directory for the selected model.
+
+```bash
+sbatch formal.sbatch train-sft
+```
+
+Keep `MEMBER_ID=all` for GRPO, evaluation, and review summaries.
 
 ### Choose a base LLM
 
@@ -117,10 +146,13 @@ its first use and make its directory readable on the compute node.
 
 | Existing data | Where to put it | What to set |
 | --- | --- | --- |
-| Member 1 archived facts input | `data/formal_v1/member_1_train_first100_facts_v3.csv` | Use the matching original assignment when reproducing the archived run. |
-| Members 2–4 archived facts-ready inputs | `data/formal_v1/enrichment/teammates_facts_full_v2_20261108_083357_977027/${MEMBER_ID}_train_facts_full_v2_ready.csv` | Use the original teammate generator for reproduction. These CSVs replace `product_facts`, which the current launcher checks against the assignment. |
 | Training CSV from the current facts import | `data/formal_v1/enrichment/${MEMBER_ID}_train.csv` | Set `TRAIN_CSV` to this path and use the matching assignment. |
-| Completed candidate run | Keep `candidates.csv`, `completed.json`, and any matching `reviewed_candidates.csv` together in the run directory | Set `CANDIDATE_RUN` to that directory and continue at Step 3. For the archived Member 1 run, use `results/formal_v1/member_1_qwen_product_only_facts_v3/`. |
+| Completed candidate run | Keep `candidates.csv`, `completed.json`, and any matching `reviewed_candidates.csv` together in the run directory | Set `CANDIDATE_RUN` to that directory and continue at Step 3. |
+
+**Pooled run (`MEMBER_ID=all`).** By default, generation combines the four
+member training CSVs into `data/formal_v1/all_train.csv`. Set `TRAIN_CSV`
+for a custom pooled training CSV or `CANDIDATE_RUN` for a completed pooled
+candidate run. Keep the original product IDs, owners, and split labels.
 
 ## 3. Prepare the reviewed training data
 
@@ -145,6 +177,10 @@ The launcher expects
 - Received a ready-to-train JSONL? Place it at this path and go to Step 4.
 - Received only the reviewed CSV? Put it next to `candidates.csv` in `$CANDIDATE_RUN` and run the export above.
 
+**Pooled run.** Run `prepare-sft` on the reviewed pooled candidates, or
+combine the four approved training JSONLs and save the result as
+`data/formal_v2/sft/all/reviewed_product_ads_train.jsonl` for Qwen.
+
 ### Reward preferences
 
 ```bash
@@ -166,9 +202,15 @@ keeps each product family in one split. It writes `train.jsonl` and
 `validation.jsonl` under
 `data/formal_v2/reward/${MEMBER_ID}/reward_data_review/`.
 
+**Pooled run.** Prepare and review the pairs from the pooled candidate
+run. For Qwen, the reward datasets go under
+`data/formal_v2/reward/all/reward_data_review/`.
+
 ## 4. Train SFT and the adapted reward
 
-SFT uses the Qwen base and the exported SFT JSONL. Before submitting, check that the training file exists and is nonempty.
+SFT uses the selected base model and the prepared SFT JSONL. Before
+submitting, check that the training file exists and is nonempty.
+The example below uses the default Qwen paths.
 
 ```bash
 sft_file="data/formal_v2/sft/${MEMBER_ID}/reviewed_product_ads_train.jsonl"
@@ -195,6 +237,11 @@ sbatch formal.sbatch train-reward
 The reward job starts from original Arena. Its `completed.json` reports
 initial and adapted pairwise validation accuracy and the validation count.
 
+**Pooled run.** Submit both jobs with `MEMBER_ID=all`. For Qwen, the
+SFT adapter is saved under `results/formal_v2/all_qwen_sft_pooled/` and
+the adapted reward under
+`models/detector/preferences/all_product_humor_review/`.
+
 ## 5. Run GRPO with four rewards
 
 After SFT completes, submit the first three jobs. Submit the adapted
@@ -211,6 +258,10 @@ Each job uses the same candidate prompts and SFT adapter for 200 steps
 at seed 42. It writes `completed.json` and `final_adapter/` under
 `results/formal_v2/${MEMBER_ID}_qwen_grpo_<reward>_seed42/`.
 
+**Pooled run.** Submit each reward variant with `MEMBER_ID=all`. The
+four jobs use the pooled training prompts and the same pooled SFT
+adapter. For Qwen, each output directory starts with `all_qwen_grpo_`.
+
 ### Optional GRPO reward plots
 
 After the four GRPO runs finish, submit a plot job from the repository root.
@@ -220,8 +271,8 @@ Install Matplotlib once if it is missing from the project environment.
 uv pip install --python .venv/bin/python matplotlib
 ```
 
-Set `SCOPE` to `member_1`, `member_2`, `member_3`, `member_4`, or `team`
-for the pooled runs.
+Set `SCOPE` to a member ID, `all` for the pooled workflow, or `team` for
+the earlier pooled runs.
 
 ```bash
 SCOPE=member_2
@@ -237,7 +288,7 @@ For another base LLM, append its key, for example
 
 ## 6. Generate the six held-out runs
 
-Submit `base` when the Qwen model and test CSV are ready. Submit each
+Submit `base` when the selected model and test inputs are ready. Submit each
 other variant when its SFT or GRPO adapter is ready.
 
 ```bash
@@ -256,12 +307,22 @@ for all six runs. Each variant writes `completed.json` and
 reward name `arena` corresponds to evaluation variant
 `grpo_original_arena`.
 
+**Pooled run.** Submit all six variants with `MEMBER_ID=all`. Evaluation
+combines the four held-out CSVs into `data/formal_v1/all_test.csv`.
+With the default Qwen base, outputs are under
+`results/formal_v2/evaluation/all/`.
+
 ## 7. Review the held-out ads
 
 Start here when Step 6 has written `run.json`, `completed.json`, and
 `candidates.csv` for all six variants. Use the same `MEMBER_ID` as in
 Step 6. Start with the scorecard to compare all six models. The separate
 A/B review is for a head-to-head comparison of the two Arena variants.
+
+**Pooled run.** Keep `MEMBER_ID=all` for A/B export and summary. For the
+six-model scorecard, set `eval_dir` to
+`results/formal_v2/evaluation/all` for Qwen, or append the selected model
+key for another base model.
 
 ### Six-model scorecard
 
@@ -279,7 +340,8 @@ eval_dir="results/formal_v2/evaluation/${MEMBER_ID}"
 ```
 
 With 50 products and four candidates per product, the export has 200 matched
-groups in ten batches. Each group shows one candidate from each variant
+groups in ten batches. With all 200 test products, it has 800 groups in
+40 batches. Each group shows one candidate from each variant
 in shuffled slots A–F. If you already exported this run, reuse its
 batches and key.
 
@@ -298,14 +360,8 @@ batches and key.
    ```
 
 The script uses `--review-dir` to locate the private key and reads the
-reviewed batches from the `reviewer/` subdirectory. The shell expands
-`$MEMBER_ID` when setting `eval_dir` above. To summarize Member 1 directly,
-run the following command, including when you open a new terminal.
-
-```bash
-.venv/bin/python scripts/summarize_six_model_review.py \
-  --review-dir results/formal_v2/evaluation/member_1/blind_six_models
-```
+reviewed batches from the `reviewer/` subdirectory. Set `eval_dir` again
+when opening a new terminal.
 
 The script matches each review to the key by `group_id` and slot letter.
 It writes `six_model_summary.csv` in the review directory with PASS,
@@ -352,11 +408,11 @@ To resume an interrupted generation, training, or evaluation job, rerun it with 
 RESUME=yes sbatch formal.sbatch <stage> [variant]
 ```
 
-For example, resume Member 1's interrupted baseline GRPO run from the
-latest checkpoint in `results/formal_v2/member_1_qwen_grpo_baseline_seed42/`.
+For example, resume the pooled baseline GRPO run from the latest
+checkpoint in `results/formal_v2/all_qwen_grpo_baseline_seed42/`.
 
 ```bash
-MEMBER_ID=member_1 RESUME=yes sbatch formal.sbatch train-grpo baseline
+MEMBER_ID=all RESUME=yes sbatch formal.sbatch train-grpo baseline
 ```
 
 Use the same `CANDIDATE_RUN` as in the original submission if you set
