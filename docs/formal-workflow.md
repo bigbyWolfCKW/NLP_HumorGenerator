@@ -182,6 +182,28 @@ Each job uses the same candidate prompts and SFT adapter for 200 steps
 at seed 42. It writes `completed.json` and `final_adapter/` under
 `results/formal_v2/${MEMBER_ID}_qwen_grpo_<reward>_seed42/`.
 
+### Optional GRPO reward plots
+
+After the four GRPO runs finish, submit a plot job from the repository root.
+Install Matplotlib once if it is missing from the project environment.
+
+```bash
+uv pip install --python .venv/bin/python matplotlib
+```
+
+Set `SCOPE` to `member_1`, `member_2`, `member_3`, `member_4`, or `team`
+for the pooled runs.
+
+```bash
+SCOPE=member_2
+sbatch scripts/plot_grpo_rewards.sbatch "$SCOPE"
+```
+
+The job reads the four `trainer_state.json`
+files and writes `results/formal_v2/plots/<scope>_grpo_reward_traces_seed42.png`.
+The figure shows mean training reward and within-group reward standard
+deviation using a trailing 10-step mean. Each curve uses its own reward model.
+
 ## 6. Generate the six held-out runs
 
 Submit `base` when the Qwen model and test CSV are ready. Submit each

@@ -112,6 +112,10 @@ reward training, four GRPO runs, and the six held-out evaluation runs.
 Use the [review prompts](docs/formal-review-prompts.md) for the
 corresponding stages.
 
+For [optional GRPO reward plots](docs/formal-workflow.md#optional-grpo-reward-plots),
+set `SCOPE` to `member_1`, `member_2`, `member_3`, `member_4`, or `team`,
+then submit `sbatch scripts/plot_grpo_rewards.sbatch "$SCOPE"`.
+
 After all six variants finish generating held-out ads, go to
 [Step 7: Review the held-out ads](docs/formal-workflow.md#7-review-the-held-out-ads)
 to export the six-model blind scorecard, collect the reviewer JSONL files,
