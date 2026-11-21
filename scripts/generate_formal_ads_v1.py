@@ -17,6 +17,7 @@ from transformers import (
 
 from formal_models import compatible_resume, model_registry
 from formal_scope import SCOPES, includes_owner
+from formal_deepseek import DEEPSEEK_MODELS, extract_ad
 
 PROJECT = Path(__file__).resolve().parents[1]
 
@@ -38,7 +39,7 @@ def atomic_json(path, value):
     temporary.replace(path)
 
 
-def format_flags(text, tokens, eos_id):
+def format_flags(text, tokens, eos_id, token_limit=192):
     flags = []
     if not text.strip():
         flags.append("empty")
@@ -50,7 +51,7 @@ def format_flags(text, tokens, eos_id):
         "i need to come up with", "here are some options",
     )):
         flags.append("possible_analysis_leakage")
-    if len(tokens) == 192 and int(tokens[-1]) != eos_id:
+    if len(tokens) == token_limit and int(tokens[-1]) != eos_id:
         flags.append("token_limit_reached")
     return flags
 
@@ -120,6 +121,8 @@ def main():
     llm_config = models[args.llm]
     model_path = PROJECT / llm_config["path"]
     template = prompt_path.read_text(encoding="utf-8")
+    is_deepseek = args.llm in DEEPSEEK_MODELS
+    token_limit = 1024 if is_deepseek else 192
 
     settings = {
         "owner": args.owner,
@@ -136,7 +139,7 @@ def main():
         "adapter": None,
         "temperature": 0.8,
         "top_p": 0.9,
-        "max_new_tokens": 192,
+        "max_new_tokens": token_limit,
         "max_words": 40,
         "news_provided_products": sum(
             bool(row.get("news_context", "").strip())
@@ -144,6 +147,10 @@ def main():
         ),
         "selection_policy": "retain_all_outputs_for_review",
     }
+    if is_deepseek:
+        settings["answer_extraction_sha256"] = sha256(
+            Path(__file__).with_name("formal_deepseek.py")
+        )
 
     if args.resume:
         if not compatible_resume(read_json(output / "run.json"), settings, args.llm, __file__):
@@ -247,7 +254,7 @@ def main():
             with torch.inference_mode():
                 generated = model.generate(
                     **encoded,
-                    max_new_tokens=192,
+                    max_new_tokens=token_limit,
                     do_sample=True,
                     temperature=0.8,
                     top_p=0.9,
@@ -260,6 +267,16 @@ def main():
             text = tokenizer.decode(
                 tokens, skip_special_tokens=True
             ).strip()
+            extraction_flags = []
+            raw_output = None
+            if is_deepseek:
+                raw_output = tokenizer.decode(tokens, skip_special_tokens=False).strip()
+                # Preserve think delimiters even if the tokenizer labels them special.
+                extractable = raw_output
+                for special in tokenizer.all_special_tokens:
+                    if special not in {"<think>", "</think>"}:
+                        extractable = extractable.replace(special, "")
+                text, extraction_flags = extract_ad(extractable)
 
             record = {
                 **product,
@@ -271,11 +288,14 @@ def main():
                 "word_count": len(text.split()),
                 "generated_tokens": len(tokens),
                 "format_flags": ";".join(
-                    format_flags(text, tokens, tokenizer.eos_token_id)
+                    format_flags(text, tokens, tokenizer.eos_token_id, token_limit)
+                    + extraction_flags
                 ),
                 "selected": "",
                 "comment": "",
             }
+            if is_deepseek:
+                record["raw_output"] = raw_output
             atomic_json(sample_path, record)
             all_records.append(record)
 
