@@ -27,11 +27,16 @@ allocation. `setup.sh` installs uv if needed and creates the project's `.venv`.
 Submit one Slurm job to download Amazon PQA, create a deterministic
 60/20/20 split by normalized product description, run detector EDA, and
 build the four member assignments. The launcher requests one GPU to meet
-the SuperPOD partition's Slurm requirements.
+the SuperPOD partition's Slurm requirements. The download runs inside the job.
 [Amazon PQA dataset and license](https://registry.opendata.aws/humor-detection/)
 
+Prefix `sbatch` with `MEMBER_ID=member_1` as shown below. This sets the
+member for this job only. The preparation job builds all four assignments,
+so use this command for the initial data preparation of a pooled experiment
+as well. With a reviewed facts CSV, replace `member_1` with its owner.
+
 ```bash
-sbatch scripts/prepare_formal_data.sbatch
+MEMBER_ID=member_1 sbatch scripts/prepare_formal_data.sbatch
 ```
 
 | Output | Location |
@@ -40,34 +45,6 @@ sbatch scripts/prepare_formal_data.sbatch
 | Train, validation, and test CSVs and `split_manifest.json` | `data/source/processed/unbiased/` |
 | EDA label counts, text lengths, and product overlap | `formal-data-<job-id>.log` |
 | Shared assignment key and member train, validation, and test CSVs | `data/formal_v1/` |
-
-If compute nodes cannot reach the dataset bucket, run
-`.venv/bin/python scripts/download_formal_pqa.py` on the login node
-before submitting the job. To build assignments from an existing processed
-train CSV, run `.venv/bin/python scripts/prepare_formal_source.py --input /path/to/train.csv`
-and then `.venv/bin/python scripts/prepare_formal_product_list_v1.py`.
-EDA requires the matching validation CSV and also requires a test CSV
-when run with `--include-test`. When reusing historical SFT examples,
-pass their original split JSONLs to the assignment script with repeated
-`--exclude-jsonl` arguments.
-
-### Reproduce an existing assignment
-
-Place the matching team files under `data/formal_v1/`. Substitute
-your assigned ID in the CSV filenames.
-
-| File under `data/formal_v1/` | Used by |
-| --- | --- |
-| `assignment_core.json` | Generation, SFT data export, GRPO and held-out evaluation |
-| `${MEMBER_ID}_train.csv` | Training candidate generation |
-| `${MEMBER_ID}_test.csv` | Held-out evaluation |
-
-For an individual run, check the uploaded files from the checkout root.
-
-```bash
-ls -lh data/formal_v1/assignment_core.json
-ls -lh "data/formal_v1/${MEMBER_ID}_train.csv" "data/formal_v1/${MEMBER_ID}_test.csv"
-```
 
 Individual runs use 100 training products, 50 test products, four ads per
 product and seed 42 by default. Set `TRAIN_PRODUCTS` or `TEST_PRODUCTS`
@@ -82,42 +59,37 @@ four member assignments. On first use, generation and evaluation build
 four matching splits. Run paths use `all` in place of the member ID. The
 combined CSVs preserve each product's owner and split for assignment checks.
 The pooled run uses every product from the selected split by default.
+Follow Steps 2–7 with this scope after choosing the base model below.
 
 ```bash
 export MEMBER_ID=all
-sbatch formal.sbatch generate-ads
-```
-
-For SFT, either review the pooled candidates and run
-`bash formal.sbatch prepare-sft`, or combine the four members' approved
-training JSONLs manually and save the result as
-`data/formal_v2/sft/all/reviewed_product_ads_train.jsonl`.
-For another base model, save it under
-`data/formal_v2/sft/all/<model>/reviewed_product_ads_train.jsonl`.
-Use training samples only. Both routes use the same training command
-and write to the same pooled adapter directory for the selected model.
-
-```bash
-sbatch formal.sbatch train-sft
 ```
 
 Keep `MEMBER_ID=all` for GRPO, evaluation, and review summaries.
 
 ### Choose a base LLM
 
-`formal.sbatch` defaults to `qwen` (Qwen2.5-7B-Instruct). Set `MODEL` to
-any local Transformers model key in [`configs/llms.json`](../configs/llms.json)
-and download it before submitting GPU jobs. Mistral is the example below.
+To reproduce the original experiments, use `qwen` (Qwen2.5-7B-Instruct),
+the default in `formal.sbatch`. The example below downloads Qwen inside
+a GPU allocation before submitting training or generation jobs.
+For experiments with another LLM, set `MODEL=mistral` or `MODEL=deepseek`.
+Model keys and paths are listed in [`configs/llms.json`](../configs/llms.json).
 
 ```bash
-MODEL=mistral
-.venv/bin/python scripts/download_models.py --models "$MODEL"
+MODEL=qwen
+module load slurm
+srun --account=mscbdt2024 --partition=normal \
+  --gres=gpu:1 --cpus-per-task=1 --mem=4G --time=02:00:00 \
+  .venv/bin/python scripts/download_models.py --models "$MODEL"
 ```
+
+Wait for `Download complete.` or `Already available locally; skipped.`
+before continuing. Complete local models are reused.
 
 When using the default Qwen model, run the stage commands as shown
 throughout this workflow. If you use a different base model, append
-`--llm "$MODEL"` to each stage command. With the example above, the
-following commands select Mistral:
+`--llm "$MODEL"` to each stage command. The following commands use
+the model selected by `MODEL`:
 
 ```bash
 sbatch formal.sbatch generate-ads --llm "$MODEL"
@@ -137,12 +109,17 @@ its first use and make its directory readable on the compute node.
 
 | Model | How to obtain it | Directory relative to the checkout | Needed for |
 | --- | --- | --- | --- |
-| Selected base LLM | Download with `.venv/bin/python scripts/download_models.py --models "$MODEL"`. | The selected model's `path` in [`configs/llms.json`](../configs/llms.json) | Candidate generation, SFT, GRPO and evaluation |
+| Selected base LLM | Run the GPU download command above. | The selected model's `path` in [`configs/llms.json`](../configs/llms.json) | Candidate generation, SFT, GRPO and evaluation |
 | Binary detector | Fine-tune RoBERTa-large on the QProduct splits and export the best validation checkpoint. See the [Detector README](../detector/README.md#prepare-and-inspect-the-qproduct-inputs). | `models/detector/checkpoints/11_roberta_large/qproduct_seed42/best_model/` | Baseline GRPO |
 | Original Arena | Start from the binary detector and train on H.Arena human-voted joke pairs. See [humor preference training](../README.md#train-the-detector-and-humor-preference-model). | `models/detector/preferences/arena_v1_seed42/best_model/` | Reward adaptation and original Arena GRPO |
 | Humor Mechanics | Start from the same binary detector and train on pairs derived from Humor Mechanics funniness ratings. Use the `mechanics` command in [humor preference training](../README.md#train-the-detector-and-humor-preference-model). | `models/detector/preferences/mechanics_v1_seed42/best_model/` | Mechanics GRPO |
 
-## 2. Generate or reuse training candidates
+## 2. Generate training candidates
+
+The `formal_v2` directory names the workflow's output layout. The
+`product_humor_v3` suffix identifies the prompt
+`configs/prompts/product_humor_v3.txt`. They version different parts
+of the experiment. Rerunning a job keeps these names.
 
 After setting `MEMBER_ID`, submit the candidate generation job from the
 repository root. This example uses the default Qwen base:
@@ -156,21 +133,6 @@ For another base model, use its key in the candidate directory and append
 `--llm MODEL` to the submission. Wait for `$CANDIDATE_RUN/completed.json`
 and `$CANDIDATE_RUN/candidates.csv` before starting Step 3. Check progress
 with `squeue -j JOB_ID` and `humor-formal-JOB_ID.log`.
-
-### Reuse existing training data
-
-| Existing data | Where to put it | What to set |
-| --- | --- | --- |
-| Training CSV from the current facts import | `data/formal_v1/enrichment/${MEMBER_ID}_train.csv` | Set `TRAIN_CSV` to this path and use the matching assignment. |
-| Completed candidate run | Keep `candidates.csv`, `completed.json`, and any matching `reviewed_candidates.csv` together in the run directory | Set `CANDIDATE_RUN` to that directory and continue at Step 3. |
-
-Use the same candidate run for SFT review, reward pairs, and all four
-GRPO runs. Re-export `CANDIDATE_RUN` if you start a new shell.
-
-**Pooled run (`MEMBER_ID=all`).** By default, generation combines the four
-member training CSVs into `data/formal_v1/all_train.csv`. Set `TRAIN_CSV`
-for a custom pooled training CSV or `CANDIDATE_RUN` for a completed pooled
-candidate run. Keep the original product IDs, owners, and split labels.
 
 ## 3. Prepare the reviewed training data
 
@@ -191,13 +153,6 @@ bash formal.sbatch prepare-sft
 
 The launcher expects
 `data/formal_v2/sft/${MEMBER_ID}/reviewed_product_ads_train.jsonl`.
-
-- Received a ready-to-train JSONL? Place it at this path and go to Step 4.
-- Received only the reviewed CSV? Put it next to `candidates.csv` in `$CANDIDATE_RUN` and run the export above.
-
-**Pooled run.** Run `prepare-sft` on the reviewed pooled candidates, or
-combine the four approved training JSONLs and save the result as
-`data/formal_v2/sft/all/reviewed_product_ads_train.jsonl` for Qwen.
 
 ### Reward preferences
 
@@ -360,8 +315,7 @@ eval_dir="results/formal_v2/evaluation/${MEMBER_ID}"
 With 50 products and four candidates per product, the export has 200 matched
 groups in ten batches. With all 200 test products, it has 800 groups in
 40 batches. Each group shows one candidate from each variant
-in shuffled slots A–F. If you already exported this run, reuse its
-batches and key.
+in shuffled slots A–F.
 
 1. Give the reviewer one `blind_batch_XX.jsonl` at a time from
    `$eval_dir/blind_six_models/reviewer/` with the
@@ -415,6 +369,59 @@ Use the final reviews for evaluation only.
 
 ## Reusing outputs and resuming jobs
 
+### Reproduce an existing assignment
+
+Place the matching team files under `data/formal_v1/`. Substitute
+your assigned ID in the CSV filenames.
+
+| File under `data/formal_v1/` | Used by |
+| --- | --- |
+| `assignment_core.json` | Generation, SFT data export, GRPO and held-out evaluation |
+| `${MEMBER_ID}_train.csv` | Training candidate generation |
+| `${MEMBER_ID}_test.csv` | Held-out evaluation |
+
+For an individual run, check the uploaded files from the checkout root.
+
+```bash
+ls -lh data/formal_v1/assignment_core.json
+ls -lh "data/formal_v1/${MEMBER_ID}_train.csv" "data/formal_v1/${MEMBER_ID}_test.csv"
+```
+
+### Reuse existing training data
+
+| Existing data | Where to put it | What to set |
+| --- | --- | --- |
+| Training CSV from the current facts import | `data/formal_v1/enrichment/${MEMBER_ID}_train.csv` | Set `TRAIN_CSV` to this path and use the matching assignment. |
+| Completed candidate run | Keep `candidates.csv`, `completed.json`, and any matching `reviewed_candidates.csv` together in the run directory | Set `CANDIDATE_RUN` to that directory and continue at Step 3. |
+
+Use the same candidate run for SFT review, reward pairs, and all four
+GRPO runs. Re-export `CANDIDATE_RUN` if you start a new shell.
+
+### Existing SFT examples
+
+Place a ready-to-train JSONL at
+`data/formal_v2/sft/${MEMBER_ID}/reviewed_product_ads_train.jsonl` for Qwen,
+or `data/formal_v2/sft/${MEMBER_ID}/<model>/reviewed_product_ads_train.jsonl`
+for another base model, then continue at Step 4. For a pooled run, set
+`MEMBER_ID=all` and combine only the four members' approved training examples.
+Keep the matching product assignment from their original experiment.
+
+If you have reviewed candidates instead, keep `reviewed_candidates.csv`
+with its matching `candidates.csv`, set `CANDIDATE_RUN` to that run, and
+export SFT examples in Step 3.
+
+### Existing models and reviews
+
+| Existing output | How to continue |
+| --- | --- |
+| Base LLM | Keep it at the configured path in `configs/llms.json`. The download command checks complete local models and skips them. |
+| Baseline, Original Arena, or Mechanics | Place the complete checkpoint and tokenizer at the paths in Step 1. Continue with the stages that require them. |
+| Adapted reward | Set `REWARD_MODEL` to its run directory containing `completed.json` and `best_model/`. Continue at Step 5. |
+| Completed SFT or GRPO | Use its original run and a compatible base model. Check absolute paths in completion records and adapter config when moving between checkouts. |
+| Exported blind review | Keep batches, returned reviews, and their original private key together. Continue with Step 7's review or summary command. |
+
+### Resume an interrupted job
+
 Keep `MEMBER_ID` and any path overrides consistent across dependent jobs.
 
 - `REWARD_DATA`: directory containing `train.jsonl` and `validation.jsonl`.
@@ -438,8 +445,10 @@ a custom path.
 
 Completed outputs can be reused by downstream stages. Preparation and review-export commands need new output directories.
 
-## Team pooling
+### Historical team pooling
 
 The team experiment pools 215 reviewed SFT examples and 212 preference pairs (176 train, 36 validation) for reward adaptation. Its four GRPO variants share the pooled SFT adapter and candidate prompts.
 
-This guide's commands run one assigned partition at a time. To reproduce the pooled experiment, request the pooled datasets and run configuration from the team.
+The earlier team experiment uses `team_*` run directories. To reproduce
+it, use its original datasets and run settings. New pooled experiments
+use `MEMBER_ID=all` and the `all_*` directories described above.

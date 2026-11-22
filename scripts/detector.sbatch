@@ -56,4 +56,17 @@ if [[ "${1:-}" == "train-qproduct" ]]; then
         --output "models/detector/checkpoints/$checkpoint"
 fi
 
+if [[ "${1:-}" == "evaluate-qproduct" ]]; then
+    if (( $# > 3 )); then
+        printf 'Usage: sbatch %s evaluate-qproduct [test.csv] [output-dir]\n' "$0" >&2
+        exit 2
+    fi
+
+    test_csv="${2:-$splits/test.csv}"
+    output="${3:-results/detector/roberta_large_seed42_test}"
+    "$PROJECT_PYTHON" -m detector rank --detector roberta-large --seed 42 --check
+    exec "$PROJECT_PYTHON" -m detector evaluate --detector roberta-large --seed 42 \
+        --csv "$test_csv" --output "$output"
+fi
+
 exec "$PROJECT_PYTHON" -m detector "$@"

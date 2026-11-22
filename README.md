@@ -24,9 +24,14 @@ Check the Slurm account in `formal.sbatch` against your allocation.
 Submit from the repository root after setup. The launcher requests one GPU
 to meet the SuperPOD partition's Slurm requirements.
 
+Prefix the submission with `MEMBER_ID=member_1` as shown below. This sets
+the member for this job only. Initial preparation creates all four member
+assignments, including when the later training uses `MEMBER_ID=all`.
+For a reviewed facts CSV, set the prefix to the member who owns its products.
+
 | Use case | Command |
 | --- | --- |
-| Start from a fresh checkout | `sbatch scripts/prepare_formal_data.sbatch` |
+| Start from a fresh checkout | `MEMBER_ID=member_1 sbatch scripts/prepare_formal_data.sbatch` |
 | Include a reviewed facts CSV for your member | `MEMBER_ID=member_1 sbatch scripts/prepare_formal_data.sbatch /path/to/member_1_reviewed_facts.csv` |
 
 | Step | What the job writes |
@@ -36,42 +41,49 @@ to meet the SuperPOD partition's Slurm requirements.
 | Assign products to all four members | `data/formal_v1/assignment_core.json` and each member's train, validation, and test CSVs |
 | Import reviewed facts when a CSV is supplied | `data/formal_v1/enrichment/${MEMBER_ID}_train.csv` |
 
-For a new assignment, run the first command, review facts for the assigned
-product IDs, then run the second command. The second run reuses the
-downloaded splits and assignments. If you already have reviewed facts for
-the matching assignment, the second command runs the whole workflow in one job.
-The reviewed facts CSV needs `product_id`, `verified_product_facts`, and
-`fact_source_urls`. Add `verified_product_name` if available. Separate
-multiple source URLs in a cell with whitespace.
+For a new assignment:
 
-If the compute node cannot reach the dataset bucket, run
-`.venv/bin/python scripts/download_formal_pqa.py` on the login node first.
+1. Run the first command.
+2. Review facts for the assigned product IDs.
+3. Run the second command. It reuses the downloaded splits and assignments.
 
-To reproduce an existing run, use the matching files from the team data
-handoff under `data/formal_v1/`:
+If you already have reviewed facts for the matching assignment, the second command runs the whole workflow in one job.
 
-- `assignment_core.json`
-- `${MEMBER_ID}_train.csv`
-- `${MEMBER_ID}_test.csv`
+The reviewed facts CSV needs these columns:
+
+- `product_id`
+- `verified_product_facts`
+- `fact_source_urls` (separate multiple URLs in one cell with whitespace)
+- `verified_product_name` (optional)
+
+The Slurm job downloads the dataset on the allocated compute node.
 
 ### Download your base LLM
 
-Choose a local Transformers model key from [`configs/llms.json`](configs/llms.json).
-The default is `qwen` (Qwen2.5-7B-Instruct).
+To reproduce the original experiments, use `qwen` (Qwen2.5-7B-Instruct).
+The example below downloads Qwen on a GPU compute allocation.
+For experiments with another LLM, set `MODEL=mistral` or `MODEL=deepseek`.
+Model keys and paths are listed in [`configs/llms.json`](configs/llms.json).
 
 ```bash
 MODEL=qwen
-.venv/bin/python scripts/download_models.py --models "$MODEL"
+module load slurm
+srun --account=mscbdt2024 --partition=normal \
+  --gres=gpu:1 --cpus-per-task=1 --mem=4G --time=02:00:00 \
+  .venv/bin/python scripts/download_models.py --models "$MODEL"
 ```
+
+Wait for `Download complete.` or `Already available locally; skipped.`
+before continuing. Complete local models are reused.
 
 When using the default Qwen model, omit `--llm` from the Slurm commands.
 If you use a different base model, append `--llm "$MODEL"` to each stage in
 the [formal workflow](docs/formal-workflow.md#choose-a-base-llm), for example
-`sbatch formal.sbatch generate-ads --llm mistral`.
+`sbatch formal.sbatch generate-ads --llm "$MODEL"`.
 
 To run one pooled experiment across all four assignments, use
 `MEMBER_ID=all`. The [pooled workflow](docs/formal-workflow.md#run-one-pooled-experiment)
-also accepts a manually combined SFT JSONL.
+covers generation, review, training, and evaluation for that scope.
 The reward-training and GRPO checkpoint paths are listed by stage in
 the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
 
@@ -98,18 +110,17 @@ the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
    `models/detector/preferences/arena_v1_seed42/best_model/` or
    `models/detector/preferences/mechanics_v1_seed42/best_model/`.
 
-   **Existing data.** Use the same `sbatch` command. If both pair files are
-   readable and nonempty, the job goes straight to training. If pairs need
-   rebuilding, it reuses valid raw files and downloads missing or invalid ones.
-
    For Adapted Arena, continue with the
    [member-specific reward workflow](docs/formal-workflow.md#3-prepare-the-reviewed-training-data).
 
 ## Train SFT
 
-New runs write to `results/formal_v2/${MEMBER_ID}_qwen_product_humor_v3/`
-by default. Set `CANDIDATE_RUN` to that directory or to the directory
-for your [existing candidate run](docs/formal-workflow.md#reuse-existing-training-data).
+New Qwen runs write to
+`results/formal_v2/${MEMBER_ID}_qwen_product_humor_v3/`.
+For another model, replace `qwen` with its key.
+
+`formal_v2` names the output layout, while `product_humor_v3` names
+the prompt version. Both names stay the same when you rerun.
 
 | Step | Run or save | Wait for this output |
 | --- | --- | --- |
@@ -118,10 +129,7 @@ for your [existing candidate run](docs/formal-workflow.md#reuse-existing-trainin
 | Export accepted examples | `bash formal.sbatch prepare-sft` | `data/formal_v2/sft/${MEMBER_ID}/reviewed_product_ads_train.jsonl` |
 | Train the adapter | `sbatch formal.sbatch train-sft` | `results/formal_v2/${MEMBER_ID}_qwen_sft_pooled/final_adapter/` and the run's `completed.json` |
 
-If `train-sft` reports `Missing or empty input`, check that the JSONL
-was exported for the selected member. The reviewed CSV is the input
-to `prepare-sft`. Use `formal.sbatch` to fill in the training and
-output paths automatically.
+If `train-sft` reports `Missing or empty input`, check that the JSONL was exported for the selected `MEMBER_ID`. The reviewed CSV is the input to `prepare-sft`, not `train-sft`. `formal.sbatch` fills in the training and output paths automatically.
 
 ## Continue to reward training and evaluation
 
@@ -151,6 +159,16 @@ The command writes `final_pair_summary.csv` to the pair directory.
 The command checks that every group has six ratings and writes
 `six_model_summary.csv` in the review directory. Step 7 also covers the
 optional Original Arena versus Adapted Arena A/B comparison.
+
+## Reuse existing data or resume a job
+
+The [reuse and resume guide](docs/formal-workflow.md#reusing-outputs-and-resuming-jobs)
+lists where to place existing assignments, reviewed SFT data, candidates,
+checkpoints, and review batches, and which step to continue from.
+
+For preference training, the same job reuses valid pair files or prepares
+them from existing raw data. If the source model has already completed
+training, use its checkpoint for the downstream stages.
 
 See the [archived README](README.legacy.md) for the earlier
 `test.sbatch` workflow.

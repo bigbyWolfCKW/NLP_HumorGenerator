@@ -78,17 +78,18 @@ those stages, configure its checkpoint path explicitly.
 
 ## Check and evaluate the trained detector
 
-Check that the trained RoBERTa-large checkpoint can be found, then evaluate
-it with a held-out CSV at `data/source/processed/unbiased/test.csv` or use
-`--csv` to pass its location:
+Submit one GPU job to check the trained RoBERTa-large checkpoint and evaluate
+it on `data/source/processed/unbiased/test.csv`.
 
 ```bash
-.venv/bin/python -m detector rank --detector roberta-large --seed 42 --check
-sbatch scripts/detector.sbatch evaluate \
-  --detector roberta-large --seed 42 --output results/detector/roberta_large_seed42_test
+sbatch scripts/detector.sbatch evaluate-qproduct
 ```
 
-It writes `metrics.json` and `predictions.csv`, with accuracy, macro-F1, the confusion matrix, input hash and resolved configuration. Select models using validation; use the held-out test for reporting rather than repeated tuning. Candidate ranking uses unlabelled generated sentences and is a separate command.
+The job writes `metrics.json` and `predictions.csv` under
+`results/detector/roberta_large_seed42_test/`. To use a different test CSV
+or a new output directory, pass the paths in that order after
+`evaluate-qproduct`. Select models on validation and report accuracy and
+macro-F1 on the held-out test.
 
 Model selection
 In our experiments, RoBERTa-large achieved the best performance. Since the three models produced very similar scores, we selected the highest-performing model, RoBERTa-large, to ensure the reproducibility of our results.
