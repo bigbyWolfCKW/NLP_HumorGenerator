@@ -6,44 +6,6 @@ variants on the same held-out products.
 
 ## Start on SuperPOD
 
-### One-Command Automated Reproduction (For Grading / Replication)
-
-The commands later in this README are unchanged. To run the full formal
-workflow, including the four AI reviews, from one configuration file:
-
-```bash
-cp .env.example .env
-```
-
-Edit `.env` and set `MEMBER_ID` (`member_1` through `member_4`, or `all`)
-and `MODEL` (`qwen`, `mistral`, or `deepseek`). For a real judge, set
-`REVIEW_API_BASE_URL`, `REVIEW_API_KEY`, and `REVIEW_MODEL` to any
-OpenAI-compatible endpoint (OpenAI, Gemini, Grok, or HKUST GenAI).
-For an offline run with no API key, set `REVIEW_FALLBACK_MODE=heuristic`.
-
-```bash
-source setup.sh
-module load slurm
-bash run_auto_pipeline.sh
-```
-
-The script submits each GPU stage with `sbatch` and runs the local export
-and review stages in the order in `docs/formal-workflow.md`. It skips a
-stage whose output already exists, so rerunning the same command resumes
-an interrupted replication. When the six-model review is finished, it
-prints `six_model_summary.csv`.
-
-```bash
-bash run_auto_pipeline.sh --dry-run
-bash run_auto_pipeline.sh --from-stage evaluate
-```
-
-`--dry-run` prints the plan and does not submit jobs. Heuristic reviews
-are a deterministic stand-in so the pipeline can be checked offline; use
-`REVIEW_FALLBACK_MODE=api` for the graded judge. The base LLM is downloaded
-if it is missing. The RoBERTa detector, Original Arena, and Humor Mechanics
-checkpoints listed below must already be trained before GRPO.
-
 ```bash
 git clone https://github.com/bigbyWolfCKW/NLP_HumorGenerator.git
 cd NLP_HumorGenerator
@@ -53,9 +15,88 @@ export MEMBER_ID=member_1
 ```
 
 `setup.sh` installs uv automatically if it is missing.
-
 Set `MEMBER_ID` to your assigned member ID.
 Check the Slurm account in `formal.sbatch` against your allocation.
+
+### One-Command Automated Reproduction (For Grading / Replication)
+
+The manual commands later in this README are unchanged. Finish the
+preparation below before `bash run_auto_pipeline.sh`. The script then
+submits each following stage itself and waits for Slurm; you do not start
+the next stage by hand. It does not train the three shared detector
+checkpoints. If those are still missing when GRPO starts, the run stops
+there.
+
+1. Train the shared detector checkpoints once, from the repository root.
+   Wait until each job finishes and each `best_model/config.json` exists.
+   These three paths are shared by every member:
+
+   - `models/detector/checkpoints/11_roberta_large/qproduct_seed42/best_model`
+   - `models/detector/preferences/arena_v1_seed42/best_model`
+   - `models/detector/preferences/mechanics_v1_seed42/best_model`
+
+   Train the RoBERTa-large QProduct checkpoint first, using the
+   [Detector README](detector/README.md#prepare-and-inspect-the-qproduct-inputs).
+   Then submit the two preference jobs and wait for both to complete:
+
+   ```bash
+   sbatch scripts/humor_preference_v1.sbatch --source arena
+   sbatch scripts/humor_preference_v1.sbatch --source mechanics
+   ```
+
+   Details are in [Train the detector and humor preference model](#train-the-detector-and-humor-preference-model).
+
+2. Copy the environment file and edit it before starting the pipeline.
+
+   ```bash
+   cp .env.example .env
+   ```
+
+   Set `MEMBER_ID` (`member_1` through `member_4`, or `all`) and `MODEL`
+   (`qwen`, `mistral`, or `deepseek`). For a real judge, set
+   `REVIEW_API_BASE_URL`, `REVIEW_API_KEY`, and `REVIEW_MODEL` to any
+   OpenAI-compatible endpoint (OpenAI, Gemini, Grok, or HKUST GenAI).
+   The HKUST base URL is `https://hkust.azure-api.net/hkust-genai/v1`.
+   For an offline check with no API key, set `REVIEW_FALLBACK_MODE=heuristic`.
+   Use `REVIEW_FALLBACK_MODE=api` for the graded judge.
+
+3. Keep this terminal session alive for the whole run. The script waits
+   in the foreground, checks Slurm every 30 seconds, and submits the next
+   stage when the current one finishes. Closing the SSH session or pressing
+   Ctrl-C stops later submissions. Jobs already in Slurm keep running.
+   A `tmux` session survives a disconnect:
+
+   ```bash
+   tmux new -s productpunch
+   bash run_auto_pipeline.sh
+   ```
+
+   Detach with Ctrl-b, then d. Reattach with `tmux attach -t productpunch`.
+   If the script stops, run the same command again. A stage whose output
+   already exists is skipped, including reviews already saved.
+
+After those three steps, this is the only pipeline command:
+
+```bash
+bash run_auto_pipeline.sh
+```
+
+The script follows `docs/formal-workflow.md`. It prepares the Amazon PQA
+assignments when `data/formal_v1/` is missing, downloads the base LLM when
+that model is missing, and trains this member's Adapted Arena reward model.
+It generates ads, runs the four AI reviews, trains SFT, runs four GRPO
+jobs, evaluates six variants, writes the six-model scorecard, and, unless
+`SKIP_FINAL_PAIRS=yes`, writes the final Arena comparison. When the
+scorecard is finished it prints `six_model_summary.csv`.
+
+```bash
+bash run_auto_pipeline.sh --dry-run
+bash run_auto_pipeline.sh --from-stage evaluate
+```
+
+`--dry-run` prints the plan and does not submit jobs. `--from-stage` starts
+at a later stage and still skips outputs that already exist. Heuristic
+reviews are a deterministic stand-in for an offline check.
 
 ### Prepare data in one Slurm job
 
@@ -126,6 +167,10 @@ The reward-training and GRPO checkpoint paths are listed by stage in
 the [full workflow](docs/formal-workflow.md#1-set-up-a-fresh-checkout).
 
 ## Train the detector and humor preference model
+
+Do this before `bash run_auto_pipeline.sh`. The one-command script checks
+the three `best_model` directories below and does not train them. A missing
+checkpoint stops the run at GRPO.
 
 1. Train and compare RoBERTa-base, DeBERTa-v3-base, and RoBERTa-large on
    the same QProduct splits using the
