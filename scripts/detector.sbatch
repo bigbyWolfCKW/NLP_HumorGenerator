@@ -26,9 +26,8 @@ if [[ "${1:-}" == "prepare" ]]; then
         exit 2
     fi
 
-    if [[ ! -e "$splits" ]]; then
-        "$PROJECT_PYTHON" scripts/download_formal_pqa.py
-    fi
+    "$PROJECT_PYTHON" scripts/download_formal_pqa.py --ensure
+    "$PROJECT_PYTHON" scripts/download_detector_models.py
 
     eda_args=(--detector roberta --detector deberta --detector roberta-large --max-length 128)
     if [[ -e "$splits/test.csv" ]]; then

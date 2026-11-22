@@ -42,9 +42,7 @@ if [[ -n "$facts" ]]; then
     need "$facts"
 fi
 
-if [[ ! -e "$splits" ]]; then
-    "$python" scripts/download_formal_pqa.py
-fi
+"$python" scripts/download_formal_pqa.py --ensure
 need "$splits/train.csv" "$splits/validation.csv" "$splits/test.csv"
 "$python" -m detector eda --include-test
 

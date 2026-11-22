@@ -26,8 +26,10 @@ source setup.sh
 module load slurm
 ```
 
-Obtain each pretrained backbone and tokenizer and put them at the
-corresponding path. Record the source revision used for each run.
+The preparation job downloads these three pretrained backbones and their
+tokenizers to the configured paths. Complete local models are reused.
+For each new download, `download_manifest.json` records the source repository
+and resolved revision.
 
 | Backbone source | Directory |
 | --- | --- |
@@ -41,17 +43,32 @@ corresponding path. Record the source revision used for each run.
 sbatch scripts/detector.sbatch prepare
 ```
 
-The job downloads the Amazon PQA CSVs to `data/source/raw/amazon_pqa/`,
-creates product-disjoint train, validation, and test splits under
+The job downloads the three backbones to the paths above. It also downloads
+the Amazon PQA CSVs to `data/source/raw/amazon_pqa/` and creates
+product-disjoint train, validation, and test splits under
 `data/source/processed/unbiased/`, and runs EDA. Check
 `detector-<job-id>.log` for label counts, product overlap, and the number of
 question–description pairs over 128 tokens for each of the three tokenizers.
 Wait for the job to complete successfully before submitting detector training.
 
+To download only the backbones on a GPU compute allocation, run:
+
+```bash
+srun --account=mscbdt2024 --partition=normal \
+  --gres=gpu:1 --cpus-per-task=1 --mem=4G --time=02:00:00 \
+  .venv/bin/python scripts/download_detector_models.py
+```
+
+Use `--models roberta`, `--models deberta`, or `--models roberta-large`
+to select one backbone. Repeating the same command skips complete models
+and retries incomplete downloads.
+
 **Existing data.** Use the same command. Existing splits go straight to EDA.
-If the splits have yet to be created, the job reuses readable raw CSVs and
-downloads missing or invalid ones before splitting. EDA checks the required
-columns and fails on product overlap.
+If a split is missing, empty, or invalid, the job reuses readable raw CSVs
+and downloads missing or invalid raw files before rebuilding the splits.
+It checks that surviving splits match the rebuilt data before filling in
+the missing files. If they differ, it stops without changing the splits.
+EDA checks the required columns and fails on product overlap.
 
 ## Compare the QProduct Transformer detectors
 

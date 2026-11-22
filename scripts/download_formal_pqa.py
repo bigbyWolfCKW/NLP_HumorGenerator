@@ -15,6 +15,57 @@ PROJECT = Path(__file__).resolve().parents[1]
 BUCKET = "https://humor-detection-pds.s3-us-west-2.amazonaws.com"
 FILES = {"Humorous.csv": "1", "Non-humorous-unbiased.csv": "0"}
 FIELDS = ("question", "product_description", "image_url", "label", "product_group")
+SPLIT_FILES = ("train.csv", "validation.csv", "test.csv")
+
+
+def read_split(path):
+    with path.open(encoding="utf-8-sig", newline="") as stream:
+        reader = csv.DictReader(stream)
+        if not set(FIELDS).issubset(reader.fieldnames or []):
+            raise ValueError(f"Invalid split columns: {path}")
+        rows = list(reader)
+    if not rows or {row.get("label") for row in rows} != {"0", "1"}:
+        raise ValueError(f"Empty or invalid split: {path}")
+    if any(None in row or any(row.get(field) is None for field in FIELDS) for row in rows):
+        raise ValueError(f"Malformed split: {path}")
+    return rows
+
+
+def split_ready(path):
+    try:
+        read_split(path)
+    except (OSError, UnicodeError, ValueError, csv.Error):
+        return False
+    return True
+
+
+def install_splits(staged, output, ensure):
+    if not output.exists():
+        staged.rename(output)
+        return
+    if not ensure:
+        raise FileExistsError(f"Split directory already exists: {output}")
+    # Check every surviving split before changing any files. Never mix a fresh
+    # split with an existing assignment made from different data or another seed.
+    ready = {name: split_ready(output / name) for name in SPLIT_FILES}
+    for name, valid in ready.items():
+        if valid and read_split(output / name) != read_split(staged / name):
+            raise ValueError(
+                f"Existing split differs from rebuilt data: {output / name}. "
+                "No files were changed; restore its matching splits or use a new data directory."
+            )
+    manifest = output / "split_manifest.json"
+    if manifest.exists():
+        previous = json.loads(manifest.read_text(encoding="utf-8-sig"))
+        rebuilt = json.loads((staged / manifest.name).read_text(encoding="utf-8"))
+        if previous != rebuilt:
+            raise ValueError(f"Existing split manifest differs: {manifest}; no files were changed.")
+    for name, valid in ready.items():
+        if not valid:
+            (staged / name).replace(output / name)
+            print(f"Rebuilt: {output / name}", flush=True)
+    if not manifest.exists():
+        (staged / manifest.name).replace(manifest)
 
 
 def readable_raw_csv(path):
@@ -73,11 +124,15 @@ def main():
     parser.add_argument("--raw-dir", type=Path, default=PROJECT / "data/source/raw/amazon_pqa")
     parser.add_argument("--offline", action="store_true", help="Use the two CSVs already in --raw-dir.")
     parser.add_argument("--seed", type=int, default=42)
+    parser.add_argument("--ensure", action="store_true", help="Reuse complete splits or safely rebuild missing/invalid splits.")
     args = parser.parse_args()
     config = json.loads((PROJECT / "configs/datasets.json").read_text(encoding="utf-8"))
     output = (PROJECT / config["root"] / config["qa_train"]).parent
-    if output.exists():
+    if output.exists() and not args.ensure:
         raise FileExistsError(f"Split directory already exists: {output}")
+    if args.ensure and all(split_ready(output / name) for name in SPLIT_FILES):
+        print(f"Using existing splits in {output}", flush=True)
+        return
     if not args.offline:
         download(args.raw_dir)
     groups, skipped = read_groups(args.raw_dir)
@@ -115,9 +170,7 @@ def main():
                 writer.writerows(rows)
             summary["splits"][split] = {"product_groups": len(selected), "rows": len(rows), "labels": labels}
         (staged / "split_manifest.json").write_text(json.dumps(summary, indent=2) + "\n", encoding="utf-8")
-        if output.exists():
-            raise FileExistsError(f"Split directory already exists: {output}")
-        staged.rename(output)
+        install_splits(staged, output, args.ensure)
     print(json.dumps(summary, indent=2))
     print(f"Saved: {output}")
 
