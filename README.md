@@ -6,6 +6,44 @@ variants on the same held-out products.
 
 ## Start on SuperPOD
 
+### One-Command Automated Reproduction (For Grading / Replication)
+
+The commands later in this README are unchanged. To run the full formal
+workflow, including the four AI reviews, from one configuration file:
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` and set `MEMBER_ID` (`member_1` through `member_4`, or `all`)
+and `MODEL` (`qwen`, `mistral`, or `deepseek`). For a real judge, set
+`REVIEW_API_BASE_URL`, `REVIEW_API_KEY`, and `REVIEW_MODEL` to any
+OpenAI-compatible endpoint (OpenAI, Gemini, Grok, or HKUST GenAI).
+For an offline run with no API key, set `REVIEW_FALLBACK_MODE=heuristic`.
+
+```bash
+source setup.sh
+module load slurm
+bash run_auto_pipeline.sh
+```
+
+The script submits each GPU stage with `sbatch` and runs the local export
+and review stages in the order in `docs/formal-workflow.md`. It skips a
+stage whose output already exists, so rerunning the same command resumes
+an interrupted replication. When the six-model review is finished, it
+prints `six_model_summary.csv`.
+
+```bash
+bash run_auto_pipeline.sh --dry-run
+bash run_auto_pipeline.sh --from-stage evaluate
+```
+
+`--dry-run` prints the plan and does not submit jobs. Heuristic reviews
+are a deterministic stand-in so the pipeline can be checked offline; use
+`REVIEW_FALLBACK_MODE=api` for the graded judge. The base LLM is downloaded
+if it is missing. The RoBERTa detector, Original Arena, and Humor Mechanics
+checkpoints listed below must already be trained before GRPO.
+
 ```bash
 git clone https://github.com/bigbyWolfCKW/NLP_HumorGenerator.git
 cd NLP_HumorGenerator
